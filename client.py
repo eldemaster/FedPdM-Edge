@@ -11,9 +11,11 @@ from collections import OrderedDict
 from common import load_cmapss_raw, CmapssRegressor, USEFUL_SENSORS, set_seed, extract_supervised_sequences
 
 class SupervisedClient(fl.client.NumPyClient):
-    def __init__(self, model, train_loader):
+    def __init__(self, model, train_loader, val_x, val_y):
         self.model = model
         self.train_loader = train_loader
+        self.val_x = val_x
+        self.val_y = val_y
         self.criterion = nn.MSELoss()
         self.optimizer = optim.Adam(self.model.parameters(), lr=0.001)
 
@@ -38,22 +40,23 @@ class SupervisedClient(fl.client.NumPyClient):
         return self.get_parameters(config={}), len(self.train_loader.dataset), {}
 
     def evaluate(self, parameters, config):
-        return 0.0, len(self.train_loader.dataset), {}
+        self.set_parameters(parameters)
+        self.model.eval()
+        with torch.no_grad():
+            preds = self.model(self.val_x).numpy()
+            loss = float(np.sqrt(np.mean((self.val_y - preds)**2)))
+        return loss, len(self.val_y), {"val_rmse": loss}
 
 if __name__ == "__main__":
     set_seed(42)
-    df_raw = load_cmapss_raw()
-    unique_units = df_raw['unit'].unique()
-    np.random.shuffle(unique_units)
+    df_raw = load_cmapss_raw('train_FD001.txt')
     
     if "CLIENT_ID" not in os.environ:
         raise ValueError("CLIENT_ID must be set!")
-        
-    partition = int(os.environ["CLIENT_ID"])
-    if partition == 1:
-        units = unique_units[:45]
-    else:
-        units = unique_units[45:90]
+    cid = os.environ["CLIENT_ID"]
+    
+    with open('partition.json', 'r') as f:
+        units = json.load(f)[cid]
         
     with open('global_scale.json', 'r') as f:
         scales = json.load(f)
@@ -61,7 +64,6 @@ if __name__ == "__main__":
     max_vals = pd.Series(scales['max'])
         
     df_sub = df_raw[df_raw['unit'].isin(units)].copy()
-    # USE GLOBAL SCALES INSTEAD OF LOCAL!
     df_sub[USEFUL_SENSORS] = (df_sub[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
     X, y = [], []
@@ -72,10 +74,10 @@ if __name__ == "__main__":
         
     X_tensor = torch.tensor(np.array(X, dtype=np.float32))
     y_tensor = torch.tensor(np.array(y, dtype=np.float32))
-    
     train_loader = DataLoader(TensorDataset(X_tensor, y_tensor), batch_size=64, shuffle=True)
     
+    fl_server = os.environ.get("FL_SERVER", "192.168.1.144:8081")
     fl.client.start_numpy_client(
-        server_address="192.168.1.144:8081",
-        client=SupervisedClient(CmapssRegressor(), train_loader)
+        server_address=fl_server,
+        client=SupervisedClient(CmapssRegressor(), train_loader, X_tensor, y_tensor.numpy())
     )

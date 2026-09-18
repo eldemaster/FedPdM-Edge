@@ -5,6 +5,7 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, TensorDataset
 import pandas as pd
 import json
+import os
 from common import load_cmapss_raw, CmapssRegressor, USEFUL_SENSORS, set_seed, extract_supervised_sequences, extract_last_sequence, nasa_score
 from sklearn.metrics import mean_squared_error
 
@@ -44,6 +45,8 @@ def run_benchmark(seed):
         part = json.load(f)
         units_c1 = part["1"]
         units_c2 = part["2"]
+        # FIX P23: Only use partition units for all!
+        valid_units = set(units_c1 + units_c2)
         
     df_train = df_raw.copy()
     df_train[USEFUL_SENSORS] = (df_train[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
@@ -67,18 +70,18 @@ def run_benchmark(seed):
     X_te_tensor = torch.tensor(np.array(X_te, dtype=np.float32))
     y_te = np.array(y_te)
     
-    # Baseline
     b_preds = np.full_like(y_te, train_mean_rul)
     b_rmse = np.sqrt(mean_squared_error(y_te, b_preds))
     b_score = nasa_score(y_te, b_preds)
     
-    # Datasets
     X_c1, y_c1, X_c2, y_c2, X_all, y_all = [], [], [], [], [], []
     for u, group in df_train.groupby('unit'):
+        u_int = int(u)
+        if u_int not in valid_units: continue
         x, y = extract_supervised_sequences(group)
-        if int(u) in units_c1:
+        if u_int in units_c1:
             X_c1.extend(x); y_c1.extend(y)
-        elif int(u) in units_c2:
+        elif u_int in units_c2:
             X_c2.extend(x); y_c2.extend(y)
         X_all.extend(x); y_all.extend(y)
         
@@ -86,8 +89,7 @@ def run_benchmark(seed):
     loader_c2 = DataLoader(TensorDataset(torch.tensor(np.array(X_c2, dtype=np.float32)), torch.tensor(np.array(y_c2, dtype=np.float32))), batch_size=64, shuffle=True)
     loader_all = DataLoader(TensorDataset(torch.tensor(np.array(X_all, dtype=np.float32)), torch.tensor(np.array(y_all, dtype=np.float32))), batch_size=64, shuffle=True)
     
-    # Train
-    m_c1 = train_model(loader_c1, epochs=10) # 10 epochs equals 5 rounds * 2 local epochs
+    m_c1 = train_model(loader_c1, epochs=10)
     m_c2 = train_model(loader_c2, epochs=10)
     m_all = train_model(loader_all, epochs=10)
     
@@ -100,7 +102,7 @@ def run_benchmark(seed):
     
     return b_rmse, b_score, local_rmse, local_score, rmse_all, score_all
 
-seeds = [42, 100, 2024]
+seeds = [42, 100, 2024, 7, 777]
 results = []
 for s in seeds:
     results.append(run_benchmark(s))
@@ -109,17 +111,27 @@ results = np.array(results)
 means = np.mean(results, axis=0)
 stds = np.std(results, axis=0)
 
-# Read federated RMSE from last run
-try:
-    with open('results/results_physical.json', 'r') as f:
-        fed_data = json.load(f)['metrics_centralized']
-        fed_rmse = fed_data['model_rmse'][-1][1]
-        fed_score = fed_data['nasa_score'][-1][1]
-except Exception as e:
-    fed_rmse, fed_score = 0.0, 0.0
+# Process 5 federated seeds
+fed_rmses = []
+fed_scores = []
+for s in seeds:
+    try:
+        with open(f'results/results_physical_seed{s}.json', 'r') as f:
+            fed_data = json.load(f)['metrics_centralized']
+            fed_rmses.append(fed_data['model_rmse'][-1][1])
+            fed_scores.append(fed_data['nasa_score'][-1][1])
+    except Exception as e:
+        pass
+
+if len(fed_rmses) > 0:
+    fed_rmse_mean, fed_rmse_std = np.mean(fed_rmses), np.std(fed_rmses)
+    fed_score_mean, fed_score_std = np.mean(fed_scores), np.std(fed_scores)
+else:
+    fed_rmse_mean, fed_rmse_std, fed_score_mean, fed_score_std = 0,0,0,0
 
 print("\n--- FINAL BENCHMARK TABLE (Official test_FD001.txt) ---")
 print(f"Constant Baseline : RMSE = {means[0]:.2f} ± {stds[0]:.2f} | NASA Score = {means[1]:.2f} ± {stds[1]:.2f}")
 print(f"Local-Only (avg)  : RMSE = {means[2]:.2f} ± {stds[2]:.2f} | NASA Score = {means[3]:.2f} ± {stds[3]:.2f}")
-print(f"Federated (FedAvg): RMSE = {fed_rmse:.2f}         | NASA Score = {fed_score:.2f}")
+print(f"Federated (FedAvg): RMSE = {fed_rmse_mean:.2f} ± {fed_rmse_std:.2f} | NASA Score = {fed_score_mean:.2f} ± {fed_score_std:.2f}")
 print(f"Centralized (10 e): RMSE = {means[4]:.2f} ± {stds[4]:.2f} | NASA Score = {means[5]:.2f} ± {stds[5]:.2f}")
+print("Note: True RUL is capped at 125 cycles during evaluation as per standard CMAPSS practice.")
