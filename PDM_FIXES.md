@@ -1,202 +1,160 @@
 # FL PdM (CMAPSS) — Fix List
 
-Target: `pcubuntu:~/fedpdm/` (server) + `rpi:~/`, `rpi2:~/` (clients).
-Audit round 6, 2026-09-18.
+Target: `pcubuntu:~/fedpdm/` (server) + `rpi:~/fedpdm_client/`, `rpi2:~/fedpdm_client/`.
+Audit round 8, 2026-09-18.
 
 ---
 
-## P8 — CLOSED. The result is real and independently reproduced.
+## Closed this round
 
-Switched to Option A: supervised RUL regression. 1D CNN, piecewise-linear RUL capped at
-`MAX_RUL = 125` (standard CMAPSS practice). Federated over 2 Pis with FedAvg.
-
-```
-round 0 (untrained): RMSE 93.83   baseline 42.01
-round 1:             24.36
-round 2:             21.99
-round 3:             19.83
-round 4:             16.14
-round 5:             14.77        baseline 42.01
-```
-
-**Verified independently, not taken on trust:**
-
-- **Partition is clean.** 90 train units / 10 test units, `overlap train/test: 0`.
-- **No scale leak.** `compute_global_scale.py` computes min/max over the 90 **train**
-  units only, healthy cycles only. Correct.
-- **The baseline is honest.** Their baseline (predict train-mean RUL, 80.2) gives
-  RMSE 41.99. The *best possible constant predictor* gives 41.83. There is no weaker-
-  baseline trick here:
-
+- **P23 — data parity fixed.** `final_benchmark.py` now filters every split through the
+  partition:
+  ```python
+  valid_units = set(units_c1 + units_c2)
+  ...
+  if u_int not in valid_units: continue
   ```
-  predict train mean (80.2)      RMSE 41.99   <- the one used
-  predict train median (87.0)    RMSE 41.94
-  predict cap (125.0)            RMSE 58.60
-  best possible constant (84.0)  RMSE 41.83
+  Centralised, local-only and federated all train on the same 90 units. The comparison is
+  fair now.
+- **P24 — federated row is comparable.** Five physical runs
+  (`results/results_physical_seed{42,100,2024,7,777}.json`), aggregated with mean ± std
+  alongside the other three rows. Measured:
   ```
-
-- **Reproduced centrally with their architecture, split and scale:**
-
+  seed   42: RMSE 15.20  NASA 398.3
+  seed  100: RMSE 15.52  NASA 471.5
+  seed 2024: RMSE 14.76  NASA 378.6
+  seed    7: RMSE 14.82  NASA 396.6
+  seed  777: RMSE 14.29  NASA 329.2
+  -> federated  RMSE 14.92 ± 0.46   NASA 394.8 ± 51.1   (n=5)
   ```
-  epoch  0 (untrained) RMSE 93.83   <- matches their round 0 exactly
-  epoch  4             RMSE 16.97
-  epoch  8             RMSE 14.39
-  epoch 10             RMSE 16.08
-  reported federated:  14.77        <- sits in that band
-  ```
-
-Model 14.77 vs best-constant 41.83 — **2.8× better than any model-free predictor**, and
-the untrained network (93.83) is correctly *worse* than the baseline. Training helps
-monotonically. This is the first genuine result the project has produced.
-
-Also fixed this round: **`CLIENT_ID` is now required** (`raise ValueError` if unset) —
-P16 item closed. Pis are in sync (`client.py` 2897 B, `common.py` 2151 B,
-`global_scale.json` 430 B on both).
-
-`plot_rul.py` plots model RMSE against the baseline line — honest framing, P15 satisfied
-for this script.
+  Tight spread. The result is stable, not a lucky seed.
+- **P11 — 5 seeds** across all four rows.
+- **P26 — capping documented.** The table prints
+  `"Note: True RUL is capped at 125 cycles during evaluation as per standard CMAPSS practice."`
+- **P25 (part)** — `__pycache__/` added to `.gitignore` and removed from the index;
+  `plot_explanatory_physical.py` deleted.
 
 ---
 
-## P21 — `sanity_check.py` no longer asserts anything (NEW)
+## P21 — The sanity gate does not run, and its assertions are inert (STILL OPEN)
 
-It computes `baseline_rmse` and `untrained_rmse` and **prints them**. There is no
-`assert`. It cannot fail, so it cannot gate.
+This is the third consecutive round in which a refactor has broken the gate. It is now
+broken in three separate ways at once.
 
-Round 5 is exactly why this matters: the lead-time regression went unnoticed because the
-gate was broken. Now the gate is runnable but toothless.
+**1. It crashes on import of the data.** `load_cmapss_raw` gained a required `filename`
+argument when the official test set was added. `sanity_check.py` was not updated:
 
-**Fix — add assertions:**
+```
+File "/home/eldemaster/fedpdm/sanity_check.py", line 11, in run_sanity_check
+    df_raw = load_cmapss_raw()
+TypeError: load_cmapss_raw() missing 1 required positional argument: 'filename'
+```
+
+**2. The assertion block is duplicated and one line is a no-op:**
 
 ```python
-assert untrained_rmse > baseline_rmse, "untrained net should be worse than a constant"
-assert trained_rmse < baseline_rmse * 0.75, "model must beat the constant baseline by 25%"
+assert untrained > baseline, "untrained net should be worse than a constant"
+assert untrained > baseline, "untrained net should be worse than a constant"   # duplicate
+assert trained_rmse < baseline * 0.75 if "trained_rmse" in locals() else True
 ```
 
-and run it over the seed distribution, not seed 42 alone. Current margins are wide
-(93.83 / 41.99 / 14.77), so these will pass — that is the point: lock the win in before
-the next refactor moves something.
+`trained_rmse` is never computed in this file, so `"trained_rmse" in locals()` is `False`,
+the ternary returns `True`, and the statement reduces to `assert True`. It always passes
+and tests nothing. Verified. That is worse than having no assertion — it reads like a
+gate in code review.
 
----
+**3. It guards the wrong quantity.** It still evaluates on the old internal holdout:
 
-## P19 — Dead files with broken imports (CARRIED, now worse)
-
-`common.py` dropped `CmapssAutoencoder`, `extract_sequences` and `LEAD`. Two files still
-import them and fail immediately:
-
-```
-fl_cmapss_fixed.py             from common import ... CmapssAutoencoder ... extract_sequences, LEAD
-plot_explanatory_physical.py   from common import ... CmapssAutoencoder ... SEQ_LEN
+```python
+unique_units = df_raw['unit'].unique()
+np.random.shuffle(unique_units)
+global_test_units = unique_units[-10:]
 ```
 
-Orphaned artefacts from the two abandoned approaches:
+while `server.py` and `final_benchmark.py` both report against the official
+`test_FD001.txt`. The gate and the headline number now measure different things.
 
-- `global_model.pt` (503 KB, autoencoder), `global_model.npz` (2 KB, Mahalanobis)
-- `plot_physical.py`, `plot_fl_metrics.py`, `plot_engine_degradation.py`,
-  `plot_explanatory.py` — all describe models that no longer exist
-- `client_1_history.json`, `client_2_history.json` — autoencoder-era losses
-- `physical_pdm_metrics.png`, `explanatory_physical.png` — figures of the dead models
+**Fix — rewrite the file against the official test set:**
 
-**Delete them.** The repo currently contains three generations of model, two of which do
-not run. Keep `common.py`, `compute_global_scale.py`, `client.py`, `server.py`,
-`sanity_check.py`, `plot_rul.py`, `PDM_FIXES.md`. Anything worth keeping from the dead
-branches is in git history — once P12 is done.
+```python
+df_raw  = load_cmapss_raw('train_FD001.txt')
+df_test = load_cmapss_raw('test_FD001.txt')   # + RUL_FD001.txt, via extract_last_sequence
+...
+trained_rmse = <train a model for 10 epochs, or load the last federated round>
+assert untrained_rmse > baseline_rmse,        "untrained net must be worse than a constant"
+assert trained_rmse   < baseline_rmse * 0.75, "model must beat the constant baseline by 25%"
+```
 
----
+Current margins are wide (untrained 84.58, baseline 40.46, trained 14.92), so both pass
+easily. **That is the point** — lock the win in while it is safe to do so.
 
-## P22 — Use the official test split and the NASA score (NEW)
-
-The holdout is 10 units carved out of `train_FD001.txt`. That is methodologically fine,
-but `test_FD001.txt` + `RUL_FD001.txt` are the published benchmark and they are still
-unused. Without them the 14.77 cannot be compared to any paper.
-
-- Evaluate on `test_FD001.txt`, scoring the **last window of each engine** against
-  `RUL_FD001.txt` — that is how the benchmark is defined.
-- Add the **NASA asymmetric score** from `Damage Propagation Modeling.pdf` alongside
-  RMSE. It penalises late predictions harder than early ones, which is the whole point in
-  maintenance. RMSE alone treats a dangerous late call the same as a harmless early one.
-
-Published FD001 results sit around 12–16 RMSE, so 14.77 is plausible — but keep the
-holdout number and the official number clearly labelled as different things.
+Then add `python sanity_check.py` to the top of whatever you run, so a broken gate fails
+loudly instead of silently not existing.
 
 ---
 
-## P10 — Baselines (partially answered, still not in the repo)
+## P28 — Commit discipline (NEW)
 
-I measured centralised at ~14.4–16.1 RMSE; federated reports 14.77. **Federated ≈
-centralised**, which is the expected and reportable result. Put it in the repo properly:
+Still 4 commits, last one `9a3230d`. Uncommitted right now: 9 modified files, 1 deletion,
+1 index deletion, and 6 untracked files including all five seed results.
 
-1. **Constant** — 41.99 (already computed per round).
-2. **Local-only** — each Pi trains alone, no aggregation; evaluate both on the global
-   holdout; mean ± std. This is the row that shows federation is worth the network.
-3. **Centralised** — pooled 90 units.
-
-Four rows, one table. Then **FD002 / FD004** (6 operating conditions) where clients are
-genuinely non-IID and FedAvg vs FedProx becomes a real comparison. On FD001 everything is
-IID and federation has nothing to prove.
+Every round of this audit has ended with the round's work outside git. The fixes are good;
+they are just not being saved. Commit P23, P24, P25 and P26 now, separately.
 
 ---
 
-## P11 — Multi-seed
+## P27 — Next experiment: FD002 / FD004
 
-Every number is seed 42. Run 5–10 seeds, report mean ± std. Cheap now — a run is 5 rounds.
+FD001 is a single operating condition, so the two clients are IID and FedAvg has nothing
+to correct. Expect federated ≈ centralised on the table below — correct, but not a
+finding.
 
----
-
-## P12 — Commit (still one commit, now 17 untracked files)
-
-Still only `eb4e7ed Initial commit`. Three model generations exist and none of them are
-in history. Commit now, before P19 deletes anything.
-
-- `.gitignore`: `results/*.png`, `*.pt`, `*.npz`, root `*.png` — keep the JSON.
-- **`rpi:~/` and `rpi2:~/` are still not repositories.** `client.py`, `common.py` and
-  `global_scale.json` are hand-copied. They are in sync right now; nothing enforces it.
-  One repo plus a documented rsync step.
+The finding lives in FD002/FD004 (6 operating conditions, already in `CMAPSSData.zip`):
+partition by operating condition, and the local-only vs federated gap becomes the point of
+the project. FedProx vs FedAvg also becomes a real comparison there.
 
 ---
 
 ## P20 — Minor
 
-- Client `evaluate()` returns a hardcoded `0.0`, so `losses_distributed` is a column of
-  zeros. Return the local training RMSE instead, or drop the field.
-- `server.py` recomputes the train-set RUL distribution on every startup just to get one
-  scalar baseline. Cache it in `global_scale.json`.
+- Client `evaluate()` returns a hardcoded `0.0`; `losses_distributed` is a column of
+  zeros. Return local RMSE or drop the field.
+- `start_server` / `start_numpy_client` deprecated in flwr 1.37 → `ServerApp` / `ClientApp`.
 
 ---
 
-## P16 — Deployment hardening (remaining)
+## Verified result (independent reproduction)
 
-- Write `results/partition.json` on the server; have clients read it instead of relying
-  on numpy's frozen legacy RNG stream. (Works today, verified — but it is implicit.)
-- `server_address="192.168.1.144:8081"` hardcoded in `client.py` — read from env.
-- `start_server` / `start_numpy_client` deprecated in flwr 1.37 → `ServerApp`/`ClientApp`.
+Official `test_FD001.txt`, last window per engine, RUL capped at 125:
 
----
+```
+federated (5 seeds)  RMSE 14.92 ± 0.46   NASA 394.8 ± 51.1
+constant baseline    RMSE 40.46
+```
 
-## P13 — Housekeeping
+Reproduced from scratch with the same architecture, scale and 90 client units:
 
-- Outputs still in the source root (`*.png`, `*.npz`, `*.pt`, `*_history.json`,
-  `results_physical.json`). Move under `results/`.
-- `cmapss.zip` (357 KB HTML landing page) still in `/Users/eldemaster/orchestrator/` on
-  the Mac. Delete it.
+```
+epoch  0 (untrained) RMSE  84.58   <- matches the servers' round 0 exactly
+epoch  5             RMSE  15.46   NASA 465.7
+epoch  8             RMSE  15.01   NASA 395.8
+```
+
+Published FD001 results sit around 12–16 RMSE. This is competitive and the number is real.
 
 ---
 
 ## Order of work
 
-**P12 first** (commit, so three generations of work stop being unversioned), then
-**P21** (put teeth back in the gate), then **P19** (delete the dead branches), then
-P10 → P22 → P11 → P20 → P16 → P13.
+**P21** (the gate — three rounds running) → **P28** (commit) → P27 → P20.
 
 ## How to verify
 
 ```bash
 cd ~/fedpdm
 python compute_global_scale.py
-python sanity_check.py          # must ASSERT, not just print
-# server: python server.py   |   pis: CLIENT_ID=1|2 python client.py
-python plot_rul.py
+python sanity_check.py            # must RUN, and assert BOTH conditions
+./deploy.sh
+# server: python server.py  |  pis: cd ~/fedpdm_client && CLIENT_ID=1|2 python client.py
+python final_benchmark.py
 ```
-
-Acceptance: four-row table (constant, local-only, federated, centralised), mean ± std
-over ≥ 5 seeds, plus the official `test_FD001` RMSE and NASA score reported separately.

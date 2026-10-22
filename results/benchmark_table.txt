@@ -1,0 +1,7 @@
+
+--- FINAL BENCHMARK TABLE (Official test_FD001.txt) ---
+Constant Baseline : RMSE = 40.46 ± 0.00 | NASA Score = 17301.19 ± 0.00
+Local-Only (avg)  : RMSE = 15.55 ± 0.46 | NASA Score = 464.43 ± 74.67
+Federated (FedAvg): RMSE = 14.92 ± 0.42 | NASA Score = 394.85 ± 45.73
+Centralized (10 e): RMSE = 14.75 ± 0.69 | NASA Score = 425.36 ± 94.56
+Note: True RUL is capped at 125 cycles during evaluation as per standard CMAPSS practice.

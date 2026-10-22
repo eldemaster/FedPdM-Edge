@@ -2,3 +2,4 @@ results/*.png
 *.pt
 *.npz
 *.png
+__pycache__/
