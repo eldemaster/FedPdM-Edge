@@ -48,7 +48,7 @@ class SupervisedClient(fl.client.NumPyClient):
         return loss, len(self.val_y), {"val_rmse": loss}
 
 if __name__ == "__main__":
-    set_seed(42)
+    set_seed(int(os.environ.get("SEED", 42)))
     df_raw = load_cmapss_raw('train_FD002.txt')
     
     if "CLIENT_ID" not in os.environ:
