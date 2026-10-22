@@ -1,3 +1,4 @@
+import os
 import flwr as fl
 import json
 import torch
@@ -56,7 +57,8 @@ def get_evaluate_fn():
     return evaluate
 
 if __name__ == "__main__":
-    set_seed(777)
+    seed = int(os.environ.get("SEED", 777))
+    set_seed(seed)
     strategy = fl.server.strategy.FedAvg(
         fraction_fit=1.0,
         fraction_evaluate=1.0,
@@ -70,5 +72,5 @@ if __name__ == "__main__":
         config=fl.server.ServerConfig(num_rounds=5),
         strategy=strategy
     )
-    with open("results/results_physical.json", "w") as f:
+    with open(f"results/fd002/results_physical_seed{seed}.json", "w") as f:
         json.dump({"metrics_centralized": history.metrics_centralized}, f)

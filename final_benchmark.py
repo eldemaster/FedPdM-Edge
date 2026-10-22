@@ -116,7 +116,7 @@ fed_rmses = []
 fed_scores = []
 for s in seeds:
     try:
-        with open(f'results/results_physical_seed{s}.json', 'r') as f:
+        with open(f'results/fd002/results_physical_seed{s}.json', 'r') as f:
             fed_data = json.load(f)['metrics_centralized']
             fed_rmses.append(fed_data['model_rmse'][-1][1])
             fed_scores.append(fed_data['nasa_score'][-1][1])
