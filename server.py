@@ -15,12 +15,12 @@ def get_evaluate_fn():
     train_mean_rul = scales['train_mean_rul']
     
     # Load official test set and RULs
-    df_test = load_cmapss_raw('test_FD001.txt')
+    df_test = load_cmapss_raw('test_FD002.txt')
     df_test[USEFUL_SENSORS] = (df_test[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
     import zipfile
     with zipfile.ZipFile('/home/eldemaster/CMAPSSData.zip', 'r') as z:
-        with z.open('RUL_FD001.txt') as f:
+        with z.open('RUL_FD002.txt') as f:
             true_ruls = pd.read_csv(f, header=None).values.flatten()
             
     X_te, y_te = [], []

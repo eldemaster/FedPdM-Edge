@@ -49,7 +49,7 @@ class SupervisedClient(fl.client.NumPyClient):
 
 if __name__ == "__main__":
     set_seed(42)
-    df_raw = load_cmapss_raw('train_FD001.txt')
+    df_raw = load_cmapss_raw('train_FD002.txt')
     
     if "CLIENT_ID" not in os.environ:
         raise ValueError("CLIENT_ID must be set!")
@@ -77,7 +77,7 @@ if __name__ == "__main__":
     train_loader = DataLoader(TensorDataset(X_tensor, y_tensor), batch_size=64, shuffle=True)
     
     fl_server = os.environ.get("FL_SERVER", "192.168.1.144:8081")
-    fl.client.start_numpy_client(
-        server_address=fl_server,
-        client=SupervisedClient(CmapssRegressor(), train_loader, X_tensor, y_tensor.numpy())
+    app = fl.client.ClientApp(
+        client_fn=lambda cid: SupervisedClient(CmapssRegressor(), train_loader, X_tensor, y_tensor.numpy()).to_client()
     )
+    fl.client.start_client(server_address=fl_server, client=SupervisedClient(CmapssRegressor(), train_loader, X_tensor, y_tensor.numpy()).to_client())

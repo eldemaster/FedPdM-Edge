@@ -10,7 +10,7 @@ from common import load_cmapss_raw, CmapssRegressor, USEFUL_SENSORS, set_seed, e
 
 def run_sanity_check(seed=42):
     set_seed(seed)
-    df_raw = load_cmapss_raw('train_FD001.txt')
+    df_raw = load_cmapss_raw('train_FD002.txt')
     
     with open('global_scale.json', 'r') as f:
         scales = json.load(f)
@@ -21,12 +21,12 @@ def run_sanity_check(seed=42):
     df_train = df_raw.copy()
     df_train[USEFUL_SENSORS] = (df_train[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
-    df_test = load_cmapss_raw('test_FD001.txt')
+    df_test = load_cmapss_raw('test_FD002.txt')
     df_test[USEFUL_SENSORS] = (df_test[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
     import zipfile
     with zipfile.ZipFile('/home/eldemaster/CMAPSSData.zip', 'r') as z:
-        with z.open('RUL_FD001.txt') as f:
+        with z.open('RUL_FD002.txt') as f:
             true_ruls = pd.read_csv(f, header=None).values.flatten()
             
     X_te, y_te = [], []

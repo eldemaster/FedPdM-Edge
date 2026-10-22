@@ -33,7 +33,7 @@ def evaluate_model(model, X_te, y_te):
 
 def run_benchmark(seed):
     set_seed(seed)
-    df_raw = load_cmapss_raw('train_FD001.txt')
+    df_raw = load_cmapss_raw('train_FD002.txt')
     
     with open('global_scale.json', 'r') as f:
         scales = json.load(f)
@@ -51,12 +51,12 @@ def run_benchmark(seed):
     df_train = df_raw.copy()
     df_train[USEFUL_SENSORS] = (df_train[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
-    df_test = load_cmapss_raw('test_FD001.txt')
+    df_test = load_cmapss_raw('test_FD002.txt')
     df_test[USEFUL_SENSORS] = (df_test[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
     
     import zipfile
     with zipfile.ZipFile('/home/eldemaster/CMAPSSData.zip', 'r') as z:
-        with z.open('RUL_FD001.txt') as f:
+        with z.open('RUL_FD002.txt') as f:
             true_ruls = pd.read_csv(f, header=None).values.flatten()
             
     X_te, y_te = [], []
@@ -129,7 +129,7 @@ if len(fed_rmses) > 0:
 else:
     fed_rmse_mean, fed_rmse_std, fed_score_mean, fed_score_std = 0,0,0,0
 
-print("\n--- FINAL BENCHMARK TABLE (Official test_FD001.txt) ---")
+print("\n--- FINAL BENCHMARK TABLE (Official test_FD002.txt) ---")
 print(f"Constant Baseline : RMSE = {means[0]:.2f} ± {stds[0]:.2f} | NASA Score = {means[1]:.2f} ± {stds[1]:.2f}")
 print(f"Local-Only (avg)  : RMSE = {means[2]:.2f} ± {stds[2]:.2f} | NASA Score = {means[3]:.2f} ± {stds[3]:.2f}")
 print(f"Federated (FedAvg): RMSE = {fed_rmse_mean:.2f} ± {fed_rmse_std:.2f} | NASA Score = {fed_score_mean:.2f} ± {fed_score_std:.2f}")

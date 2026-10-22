@@ -4,7 +4,8 @@ import random
 import torch
 import torch.nn as nn
 
-USEFUL_SENSORS = ['s2', 's3', 's4', 's7', 's8', 's9', 's11', 's12', 's13', 's14', 's15', 's17', 's20', 's21']
+# Added setting1, setting2, setting3 for heterogeneous operating conditions
+USEFUL_SENSORS = ['setting1', 'setting2', 'setting3', 's2', 's3', 's4', 's7', 's8', 's9', 's11', 's12', 's13', 's14', 's15', 's17', 's20', 's21']
 SEQ_LEN = 30
 MAX_RUL = 125
 
@@ -25,6 +26,7 @@ def load_cmapss_raw(filename):
 class CmapssRegressor(nn.Module):
     def __init__(self):
         super().__init__()
+        # Input channels is now 17
         self.conv1 = nn.Conv1d(in_channels=len(USEFUL_SENSORS), out_channels=32, kernel_size=3, padding=1)
         self.relu1 = nn.ReLU()
         self.pool1 = nn.MaxPool1d(kernel_size=2)

@@ -3,7 +3,7 @@ import numpy as np
 from common import load_cmapss_raw, USEFUL_SENSORS, set_seed, extract_supervised_sequences
 
 set_seed(42)
-df_raw = load_cmapss_raw('train_FD001.txt')
+df_raw = load_cmapss_raw('train_FD002.txt')
 unique_units = df_raw['unit'].unique()
 np.random.shuffle(unique_units)
 
@@ -23,9 +23,3 @@ with open('global_scale.json', 'w') as f:
     }, f)
 
 # P16: Write partition.json
-partition_dict = {
-    "1": [int(x) for x in unique_units[:45]],
-    "2": [int(x) for x in unique_units[45:90]]
-}
-with open('partition.json', 'w') as f:
-    json.dump(partition_dict, f)
