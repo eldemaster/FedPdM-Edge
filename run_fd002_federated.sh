@@ -45,11 +45,11 @@ for seed in "${SEEDS[@]}"; do
 
     # Start client on 192.168.1.147 (CLIENT_ID=1)
     echo "Launching Client 1 on ${RPI1_HOST}..."
-    ssh "${RPI1_HOST}" "cd ~/fedpdm_client && nohup env PYTHONUNBUFFERED=1 SEED=${seed} CLIENT_ID=1 FL_SERVER=${FL_SERVER} ~/venv/bin/python -u client.py > client_1.log 2>&1 < /dev/null &"
+    ssh -f -n "${RPI1_HOST}" "cd ~/fedpdm_client && nohup env PYTHONUNBUFFERED=1 SEED=${seed} CLIENT_ID=1 FL_SERVER=${FL_SERVER} ~/venv/bin/python -u client.py > client_1.log 2>&1 < /dev/null &"
 
     # Start client on 192.168.1.115 (CLIENT_ID=2)
     echo "Launching Client 2 on ${RPI2_HOST}..."
-    ssh "${RPI2_HOST}" "cd ~/fedpdm_client && nohup env PYTHONUNBUFFERED=1 SEED=${seed} CLIENT_ID=2 FL_SERVER=${FL_SERVER} ~/venv/bin/python -u client.py > client_2.log 2>&1 < /dev/null &"
+    ssh -f -n "${RPI2_HOST}" "cd ~/fedpdm_client && nohup env PYTHONUNBUFFERED=1 SEED=${seed} CLIENT_ID=2 FL_SERVER=${FL_SERVER} ~/venv/bin/python -u client.py > client_2.log 2>&1 < /dev/null &"
 
     # Wait for server process to exit, with 20 minute timeout
     echo "Waiting for server (PID: ${SERVER_PID}) to complete (timeout: 20 min)..."

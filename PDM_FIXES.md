@@ -158,3 +158,35 @@ python sanity_check.py            # must RUN, and assert BOTH conditions
 # server: python server.py  |  pis: cd ~/fedpdm_client && CLIENT_ID=1|2 python client.py
 python final_benchmark.py
 ```
+
+---
+
+## Round 9 — 2026-10-23: FD002 (non-IID) result
+
+P27 done. Pipeline moved to FD002 (6 operating conditions); clients partitioned by operating
+condition. FD001 results kept apart in `results/fd001/`; FD002 in `results/fd002/`. The
+benchmark was reading the FD001 federated files, which would have mixed datasets: fixed by
+separating the folders. Server and client now take the seed from the `SEED` env variable (the
+client seed used to be fixed at 42, so the old FD001 std only reflects the server seed).
+
+Official `test_FD002.txt`, last window per engine, RUL capped at 125, 5 seeds, 5 rounds:
+
+```
+Constant baseline : RMSE 43.41          NASA   59296
+Local-only (avg)  : RMSE 24.96 ± 0.99   NASA   10702 ± 2404
+Federated (FedAvg): RMSE 21.98 ± 0.99   NASA    4878 ± 2291
+Centralized       : RMSE 19.57 ± 0.86   NASA    2975 ± 1405
+```
+
+Federated beats local-only by 3.0 RMSE (12 %) and halves the NASA score; it stays 2.4 RMSE
+behind centralised. This is the expected ordering and is the first real federated finding
+(on FD001 the clients were IID and there was nothing to correct).
+
+Closed: P21 (sanity gate, 15ad636), P27 (FD002 run), P28 (everything committed).
+
+Open:
+- FedProx vs FedAvg on FD002 (not run).
+- Only 5 rounds, 2 clients; no round-count sweep. Federated may not have converged.
+- P20: client `evaluate()` returns a hardcoded 0.0; `start_server` / `start_numpy_client`
+  deprecated in flwr 1.37.
+- `run_fd002_federated.sh` must launch clients with `ssh -f -n`, or the first ssh blocks.

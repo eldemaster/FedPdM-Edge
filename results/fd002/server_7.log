@@ -1,0 +1,100 @@
+[93mWARNING [0m:   DEPRECATED FEATURE: flwr.server.start_server() is deprecated.
+	Instead, use the `flower-superlink` CLI command to start a SuperLink as shown below:
+
+		$ flower-superlink --insecure
+
+	To view usage and all available options, run:
+
+		$ flower-superlink --help
+
+	Using `start_server()` is deprecated.
+
+            This is a deprecated feature. It will be removed
+            entirely in future versions of Flower.
+        
+[92mINFO [0m:      Starting Flower server, config: num_rounds=5, no round_timeout
+[92mINFO [0m:      Flower ECE: gRPC server running (5 rounds), SSL is disabled
+[92mINFO [0m:      [INIT]
+[92mINFO [0m:      Requesting initial parameters from one random client
+[92mINFO [0m:      Received initial parameters from one random client
+[92mINFO [0m:      Starting evaluation of initial global parameters
+Round 0 - Model RMSE: 84.16, NASA Score: 1055378.22
+[92mINFO [0m:      initial parameters (loss, other metrics): 84.1592815319187, {'model_rmse': 84.1592815319187, 'baseline_rmse': 43.41007697077599, 'nasa_score': 1055378.2160509885}
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 1]
+[92mINFO [0m:      configure_fit: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_fit: received 2 results and 0 failures
+[93mWARNING [0m:   No fit_metrics_aggregation_fn provided
+Round 1 - Model RMSE: 44.47, NASA Score: 93356.45
+[92mINFO [0m:      fit progress: (1, 44.47028447370081, {'model_rmse': 44.47028447370081, 'baseline_rmse': 43.41007697077599, 'nasa_score': 93356.44666877754}, 19.699122749036178)
+[92mINFO [0m:      configure_evaluate: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_evaluate: received 2 results and 0 failures
+[93mWARNING [0m:   No evaluate_metrics_aggregation_fn provided
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 2]
+[92mINFO [0m:      configure_fit: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_fit: received 2 results and 0 failures
+Round 2 - Model RMSE: 32.42, NASA Score: 17828.94
+[92mINFO [0m:      fit progress: (2, 32.420075251252506, {'model_rmse': 32.420075251252506, 'baseline_rmse': 43.41007697077599, 'nasa_score': 17828.935574502797}, 40.843733893940225)
+[92mINFO [0m:      configure_evaluate: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_evaluate: received 2 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 3]
+[92mINFO [0m:      configure_fit: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_fit: received 2 results and 0 failures
+Round 3 - Model RMSE: 24.06, NASA Score: 5920.04
+[92mINFO [0m:      fit progress: (3, 24.058793850137988, {'model_rmse': 24.058793850137988, 'baseline_rmse': 43.41007697077599, 'nasa_score': 5920.041536478697}, 62.54583886102773)
+[92mINFO [0m:      configure_evaluate: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_evaluate: received 2 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 4]
+[92mINFO [0m:      configure_fit: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_fit: received 2 results and 0 failures
+Round 4 - Model RMSE: 22.68, NASA Score: 4889.14
+[92mINFO [0m:      fit progress: (4, 22.68010328373611, {'model_rmse': 22.68010328373611, 'baseline_rmse': 43.41007697077599, 'nasa_score': 4889.143258092536}, 84.50844446592964)
+[92mINFO [0m:      configure_evaluate: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_evaluate: received 2 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [ROUND 5]
+[92mINFO [0m:      configure_fit: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_fit: received 2 results and 0 failures
+Round 5 - Model RMSE: 22.19, NASA Score: 3696.84
+[92mINFO [0m:      fit progress: (5, 22.18778746512721, {'model_rmse': 22.18778746512721, 'baseline_rmse': 43.41007697077599, 'nasa_score': 3696.838367211255}, 106.80635416205041)
+[92mINFO [0m:      configure_evaluate: strategy sampled 2 clients (out of 2)
+[92mINFO [0m:      aggregate_evaluate: received 2 results and 0 failures
+[92mINFO [0m:      
+[92mINFO [0m:      [SUMMARY]
+[92mINFO [0m:      Run finished 5 round(s) in 108.23s
+[92mINFO [0m:      	History (loss, distributed):
+[92mINFO [0m:      		round 1: 41.64234457926149
+[92mINFO [0m:      		round 2: 30.767511131334327
+[92mINFO [0m:      		round 3: 23.995236614950883
+[92mINFO [0m:      		round 4: 22.952976420599434
+[92mINFO [0m:      		round 5: 22.816294199798424
+[92mINFO [0m:      	History (loss, centralized):
+[92mINFO [0m:      		round 0: 84.1592815319187
+[92mINFO [0m:      		round 1: 44.47028447370081
+[92mINFO [0m:      		round 2: 32.420075251252506
+[92mINFO [0m:      		round 3: 24.058793850137988
+[92mINFO [0m:      		round 4: 22.68010328373611
+[92mINFO [0m:      		round 5: 22.18778746512721
+[92mINFO [0m:      	History (metrics, centralized):
+[92mINFO [0m:      	{'baseline_rmse': [(0, 43.41007697077599),
+[92mINFO [0m:      	                   (1, 43.41007697077599),
+[92mINFO [0m:      	                   (2, 43.41007697077599),
+[92mINFO [0m:      	                   (3, 43.41007697077599),
+[92mINFO [0m:      	                   (4, 43.41007697077599),
+[92mINFO [0m:      	                   (5, 43.41007697077599)],
+[92mINFO [0m:      	 'model_rmse': [(0, 84.1592815319187),
+[92mINFO [0m:      	                (1, 44.47028447370081),
+[92mINFO [0m:      	                (2, 32.420075251252506),
+[92mINFO [0m:      	                (3, 24.058793850137988),
+[92mINFO [0m:      	                (4, 22.68010328373611),
+[92mINFO [0m:      	                (5, 22.18778746512721)],
+[92mINFO [0m:      	 'nasa_score': [(0, 1055378.2160509885),
+[92mINFO [0m:      	                (1, 93356.44666877754),
+[92mINFO [0m:      	                (2, 17828.935574502797),
+[92mINFO [0m:      	                (3, 5920.041536478697),
+[92mINFO [0m:      	                (4, 4889.143258092536),
+[92mINFO [0m:      	                (5, 3696.838367211255)]}
+[92mINFO [0m:      
