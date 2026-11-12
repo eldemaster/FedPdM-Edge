@@ -16,8 +16,8 @@ OUT.mkdir(exist_ok=True)
 DATASETS = [("fd001", "FD001"), ("fd002", "FD002")]
 ROWS = [("Constant Baseline", "Constant baseline", "n/a"),
         ("Local-Only", "Isolated local (avg.)", "local"),
-        ("Federated", "FedAvg swarm (ours)", "local"),
-        ("Centralized", "Centralized (upper bound)", "exposed")]
+        ("Federated", "FedAvg swarm (ours)", "local + updates shared"),
+        ("Centralized", "Centralized reference", "pooled data")]
 PAT = re.compile(r"^(\S.*?)\s*(?:\(.*?\))?\s*:\s*RMSE = ([\d.]+) ± ([\d.]+) \| NASA Score = ([\d.]+) ± ([\d.]+)")
 TODO = r"\todo{pending}"
 
@@ -54,7 +54,7 @@ seeds = {ds: load_seeds(ds) for ds, _ in DATASETS}
 
 # ---- main table -----------------------------------------------------------
 tex.append(r"\begin{tabular}{llcrr}\toprule")
-tex.append(r"Dataset & Method & Privacy & RMSE (cycles) & NASA score \\\midrule")
+tex.append(r"Dataset & Method & Data placement & RMSE (cycles) & NASA score \\\midrule")
 for i, (ds, label) in enumerate(DATASETS):
     t = tables[ds]
     for key, name, priv in ROWS:

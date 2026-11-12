@@ -6,7 +6,7 @@
 [![Flower](https://img.shields.io/badge/Flower-FL-green.svg)](https://flower.ai/)
 [![Interreg Aurora](https://img.shields.io/badge/Project-ResilientEdge-003399.svg)](https://www.interregaurora.eu/)
 
-**FedPdM-Edge** is a privacy-preserving, decentralized predictive maintenance framework developed for industrial manufacturing environments. Built under the **EU Interreg Aurora Project *ResilientEdge*** (Grant No. 20373282) by **Mid Sweden University** and the **University of Oulu**, it addresses the critical challenge of keeping raw machine telemetry strictly on-premise while collaboratively training robust Remaining Useful Life (RUL) regression models across distributed factory sites.
+**FedPdM-Edge** is a federated predictive maintenance research prototype developed for industrial manufacturing environments. Built under the **EU Interreg Aurora Project *ResilientEdge*** (Grant No. 20373282) by **Mid Sweden University** and the **University of Oulu**, it studies collaborative Remaining Useful Life (RUL) regression while keeping training telemetry on the client nodes.
 
 ---
 
@@ -17,7 +17,7 @@ In Industry 4.0 manufacturing plants, operational machinery telemetry (turbomach
 However, isolated plants frequently encounter data scarcity: rare catastrophic mechanical failures happen infrequently at a single facility, causing locally-trained models to overfit or miss degradation anomalies. 
 
 **FedPdM-Edge** solves this trade-off using **Swarm Intelligence and Federated Learning (Flower + PyTorch 1D-CNN)**:
-- **Zero Raw Data Sharing:** Plants exclusively exchange encrypted neural network weights $\mathbf{w}_i^{(t)}$. Raw sensor streams never leave the plant boundary.
+- **Local Training Data:** The checked-in clients train on local telemetry and exchange model parameters. The Flower calls do not configure TLS, secure aggregation, or differential privacy; updates can leak information and transport is not claimed to be encrypted.
 - **Asymmetric Risk Optimization:** Evaluated against the exponential **NASA Asymmetric Scoring Function**, penalizing dangerous late failure predictions far more heavily than conservative early predictions.
 - **Physical Edge Viability:** Tested and benchmarked across physical ARM single-board clusters (Raspberry Pi 4) and heterogeneous edge servers.
 
@@ -38,7 +38,7 @@ flowchart TD
         end
     end
 
-    Bus["Secure gRPC / mTLS Federated Transport Layer<br/>[Weight Tensors: w_i <==> Global Model: w]"]
+    Bus["Flower gRPC transport<br/>[Model parameters: w_i <==> Global Model: w]"]
 
     ModelA <-->|"Local Weights w_1"| Bus
     ModelB <-->|"Local Weights w_2"| Bus
@@ -57,7 +57,7 @@ flowchart TD
 | **Plant Edge Node** | Raspberry Pi 4 / Edge Host | Runs local 1D-CNN training over sliding windows ($W=30$). | 100% On-Premise; raw data retained. |
 | **Data Scaler** | Preprocessor | Min-Max sensor normalization across operating regimes. | Standardized local representations. |
 | **1D-CNN Model** | PyTorch Regression Engine | 2 Conv1d layers + MaxPool1d + Fully Connected layers. | Low-latency inference on low-power ARM CPUs. |
-| **Federated Bus** | gRPC / TLS Link | Protocol transport exchanging exclusively model parameters. | Zero raw sensor streaming across the WAN. |
+| **Federated Bus** | Flower gRPC | Exchanges model parameters; TLS, secure aggregation, and differential privacy are not configured in the checked-in client/server. | Raw training telemetry stays on clients; model-update leakage is not mitigated. |
 | **Coordinator Hub** | Swarm Hub (Flower) | Aggregates weights: $\mathbf{w}^{(t+1)} = \sum \frac{n_i}{N} \mathbf{w}_i^{(t)}$. | Global consensus model without centralization. |
 | **Risk Engine** | Production Evaluator | NASA asymmetric penalty metric ($S = \sum e^{\alpha \Delta} - 1$). | Exponential penalty for late failure predictions. |
 
@@ -70,24 +70,24 @@ Evaluated rigorously across multiple random seeds on the standard **NASA C-MAPSS
 ### 1. NASA C-MAPSS FD001 (Single Operating Condition)
 *Evaluated over 5 independent random seeds ($n=5$)*:
 
-| Architecture | Model Privacy | Test RMSE (Cycles) | NASA Asymmetric Score |
+| Architecture | Training Data Location | Test RMSE (Cycles) | NASA Asymmetric Score |
 | :--- | :---: | :---: | :---: |
 | **Constant Baseline** | N/A | $40.46 \pm 0.00$ | $17{,}301.19 \pm 0.00$ |
-| **Isolated Local Edge** | 100% Local | $15.55 \pm 0.46$ | $464.43 \pm 74.67$ |
-| **FedAvg Swarm (FedPdM)** | **100% Local** | **$14.92 \pm 0.42$** | **$394.85 \pm 45.73$** |
-| *Centralized Upper Bound* | 0% (Exposed) | $14.75 \pm 0.69$ | $425.36 \pm 94.56$ |
+| **Isolated Local Edge** | Local training | $15.55 \pm 0.46$ | $464.43 \pm 74.67$ |
+| **FedAvg Swarm (FedPdM)** | Local training; parameters exchanged | **$14.92 \pm 0.42$** | **$394.85 \pm 45.73$** |
+| *Centralized reference* | Pooled training data | $14.75 \pm 0.69$ | $425.36 \pm 94.56$ |
 
-> **Key Finding:** The federated swarm virtually matches the theoretical RMSE ceiling of centralized data pooling ($14.92$ vs $14.75$) while **outperforming centralized training on the NASA Risk Score** ($394.85$ vs $425.36$). The federated aggregation introduces implicit regularization that protects against local sensor overfitting.
+> **Key Finding:** These preliminary reported runs place FedAvg close to centralized RMSE on FD001. The difference in NASA score is descriptive only; five seeds do not establish a significant advantage. An implicit-regularization explanation has not been tested.
 
 ### 2. NASA C-MAPSS FD002 (Heterogeneous Operating Regimes)
-*Evaluated across 6 distinct altitude, Mach number, and throttle combinations*:
+*The underlying FD002 dataset contains six operating conditions; archived run partitions need provenance confirmation (see `docs/literature_review.md`)*:
 
-| Architecture | Model Privacy | Test RMSE (Cycles) | NASA Asymmetric Score |
+| Architecture | Training Data Location | Test RMSE (Cycles) | NASA Asymmetric Score |
 | :--- | :---: | :---: | :---: |
 | **Constant Baseline** | N/A | $43.41 \pm 0.00$ | $59{,}296.05 \pm 0.00$ |
-| **Isolated Local Edge** | 100% Local | $24.96 \pm 0.99$ | $10{,}702.21 \pm 2{,}404.11$ |
-| **FedAvg Swarm (FedPdM)** | **100% Local** | **$21.98 \pm 0.99$** | **$4{,}877.92 \pm 2{,}291.46$** |
-| *Centralized Upper Bound* | 0% (Exposed) | $19.57 \pm 0.86$ | $2{,}974.50 \pm 1{,}405.23$ |
+| **Isolated Local Edge** | Local training | $24.96 \pm 0.99$ | $10{,}702.21 \pm 2{,}404.11$ |
+| **FedAvg Swarm (FedPdM)** | Local training; parameters exchanged | **$21.98 \pm 0.99$** | **$4{,}877.92 \pm 2{,}291.46$** |
+| *Centralized reference* | Pooled training data | $19.57 \pm 0.86$ | $2{,}974.50 \pm 1{,}405.23$ |
 
 ---
 
@@ -101,7 +101,7 @@ FedPdM-Edge/
 ├── compute_global_scale.py   # Global min-max scaling across operating conditions
 ├── final_benchmark.py        # Reproducible 4-way comparison (Constant, Local, FedAvg, Centralized)
 ├── run_fd002_federated.sh    # Multi-client local/remote test runner
-├── setup_fd002.py            # Non-IID operating condition partition generator
+├── setup_fd002.py            # Lifespan-sorted label-skew partition generator
 ├── sanity_check.py           # Verification gate for model convergence and data pipelines
 ├── plot_rul.py               # Generates RUL prediction vs ground truth curves
 ├── deploy.sh                 # Rsync deployment script to Raspberry Pi edge nodes

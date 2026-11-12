@@ -13,4 +13,4 @@ Coordinator: FedAvg $\rightarrow$ global $\mathbf{w}$ $\rightarrow$ RMSE / NASA 
 \label{fig:arch}
 \end{figure}
 
-\textbf{Privacy scope.} Parameter sharing keeps raw telemetry on site, but weights can still leak information; we do not claim formal guarantees. The README mentions mTLS; \todo{verify whether transport encryption is actually enabled in the experiments before stating it}.
+\textbf{Privacy scope.} In the checked-in experiment, clients train on local telemetry and send model parameters to the server. The Flower client/server calls do not configure TLS certificates, secure aggregation, or differential privacy, so this implementation does not establish encrypted transport or formal privacy guarantees. Parameters may leak information, and centrally computed scaling statistics are also shared with clients. The README previously claimed mTLS and encrypted weights; those claims were removed because the code does not implement them.
