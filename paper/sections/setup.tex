@@ -1,0 +1,13 @@
+\section{Experimental Setup}
+\label{sec:setup}
+\textbf{Data.} C-MAPSS FD001 (one operating condition, one fault mode; 100 training and 100 test engines) and FD002 (six operating conditions, one fault mode; 260 training and 259 test engines)~\cite{saxena2008damage}. Models are evaluated on the official test files: one window per engine (the last $W$ cycles) against the provided RUL, with the true RUL capped at 125 cycles.
+
+\textbf{Partitioning.} Two clients. For FD001, centralised, local-only and federated runs use the same 90 training units (data-parity fix recorded in the audit log). For FD002, \texttt{setup\_fd002.py} sorts the 260 engines by lifespan and gives the shorter-lived half to client~1 and the rest to client~2, a label-skew partition. \todo{The README and audit log describe the FD002 split as ``by operating condition''; the script splits by lifespan. Confirm which was used for the reported runs and correct the text}
+
+\textbf{Training.} Adam, learning rate $10^{-3}$, batch size 64, MSE loss. Federated: 2 local epochs per round, 5 rounds, FedAvg. Centralised and local-only baselines: 10 epochs. The constant baseline predicts the training-set mean RUL. \todo{Min-clients/fraction settings and server-side evaluation details from server.py}
+
+\textbf{Seeds.} 42, 100, 2024, 7, 777 ($n=5$); client and server seeds are set from the \texttt{SEED} environment variable. Earlier FD001 federated runs fixed the client seed at 42, so their variance reflects the server seed only (audit log). \todo{State whether the reported FD001 files were produced before or after this change}
+
+\textbf{Hardware.} Federated runs: two Raspberry Pi 4 clients plus an Ubuntu PC coordinator. \todo{Pi RAM, CPU governor, PC specs}. Centralised and local-only baselines run via \texttt{final\_benchmark.py}; \todo{which machine}.
+
+\textbf{Statistics.} Tables report mean $\pm$ the standard deviation across seeds as produced by \texttt{final\_benchmark.py}; for the federated rows this is the population standard deviation (ddof\,=\,0). Sample standard deviation computed from the raw JSON files is \FdOneFedRmseSampleStd{} (FD001) and \FdTwoFedRmseSampleStd{} (FD002) RMSE.

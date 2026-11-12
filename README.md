@@ -94,12 +94,6 @@ Per-node cost (physical, 2 local epochs/round): RPi1 ~12.8 s (16.7k windows), RP
 
 > The FD001 table above is from the pre-audit pipeline and was **not re-run** here.
 
---- | :---: | :---: | :---: |
-| **Constant Baseline** | N/A | $43.41 \pm 0.00$ | $59{,}296.05 \pm 0.00$ |
-| **Isolated Local Edge** | 100% Local | $24.96 \pm 0.99$ | $10{,}702.21 \pm 2{,}404.11$ |
-| **FedAvg Swarm (FedPdM)** | **100% Local** | **$21.98 \pm 0.99$** | **$4{,}877.92 \pm 2{,}291.46$** |
-| *Centralized Upper Bound* | 0% (Exposed) | $19.57 \pm 0.86$ | $2{,}974.50 \pm 1{,}405.23$ |
-
 ---
 
 ## 📁 Repository Structure

@@ -1,0 +1,16 @@
+\section{System Architecture}
+\label{sec:arch}
+FedPdM-Edge has two tiers (Fig.~\ref{fig:arch}). \emph{Tier~1} are plant edge nodes: each reads local sensor streams, applies global min--max scaling, cuts sliding windows, and trains the local 1D-CNN; raw data never leaves the node. \emph{Tier~2} is a coordinator that runs Flower's FedAvg aggregator, evaluates the global model on the held-out test set each round, and computes RMSE and NASA score. Clients and server communicate over gRPC; only weight tensors travel. In our testbed the coordinator is a PC-class Ubuntu host and the two clients are Raspberry Pi 4 boards on a local network (\todo{Pi RAM, OS, Python/PyTorch/Flower versions, link type}). The deployment is scripted (\texttt{deploy.sh}, \texttt{run\_fd002\_federated.sh}).
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\columnwidth}{\centering\small
+Plant A (RPi 4): sensors $\rightarrow$ window $W{=}30$ $\rightarrow$ 1D-CNN\\[2pt]
+Plant B (RPi 4): sensors $\rightarrow$ window $W{=}30$ $\rightarrow$ 1D-CNN\\[2pt]
+$\Updownarrow$ weights $\mathbf{w}_i$ over gRPC\\[2pt]
+Coordinator: FedAvg $\rightarrow$ global $\mathbf{w}$ $\rightarrow$ RMSE / NASA score}}
+\caption{Two-tier architecture (schematic placeholder). \todo{Replace with a drawn diagram, e.g.\ TikZ version of the README flowchart; mark which link is TLS-protected only if verified in code}}
+\label{fig:arch}
+\end{figure}
+
+\textbf{Privacy scope.} Parameter sharing keeps raw telemetry on site, but weights can still leak information; we do not claim formal guarantees. The README mentions mTLS; \todo{verify whether transport encryption is actually enabled in the experiments before stating it}.
