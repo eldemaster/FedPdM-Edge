@@ -1,0 +1,15 @@
+\section{Introduction}
+\label{sec:intro}
+Condition monitoring in manufacturing produces high-rate telemetry (temperatures, pressures, vibration, actuator states) that encodes process know-how and is treated as proprietary. Shipping it to a third-party cloud raises exfiltration and regulatory concerns, while keeping it local starves each plant of failure examples: catastrophic degradation is rare at any single site, so locally trained prognostic models overfit or miss late-life behaviour.
+
+Federated learning (FL)~\cite{mcmahan2017fedavg} offers a middle path: sites train locally and share only parameters. Most FL studies are simulated on a single workstation, however, and say little about whether the approach holds on the low-power ARM hardware that sits next to machines. A second gap is evaluation: RUL errors are not symmetric, since a late prediction can cause an unplanned failure while an early one only costs some useful life. The standard NASA score~\cite{saxena2008damage} encodes this, yet is often omitted next to RMSE.
+
+This paper studies federated RUL regression end to end on physical edge nodes. Our contributions are:
+\begin{itemize}
+\item a federated PdM pipeline (Flower, PyTorch 1D-CNN) deployed on Raspberry Pi 4 clients with a coordinator server, with data-parity-checked comparison against constant, local-only and centralised baselines;
+\item an evaluation on the official C-MAPSS FD001 and FD002 test sets, five seeds, reporting both RMSE and the asymmetric NASA score;
+\item evidence that the benefit of federation depends on heterogeneity: on FD001 the clients are near-IID and federated training is on par with centralised, whereas on FD002 it clearly beats isolated training.
+\end{itemize}
+\todo{Add research questions / outline paragraph once the experimental scope (FedProx, round sweep, edge cost) is fixed}
+
+The remainder is organised as follows: Section~\ref{sec:related} reviews related work, Section~\ref{sec:arch} the architecture, Section~\ref{sec:method} the method, Section~\ref{sec:setup} the setup, Section~\ref{sec:results} the results, Section~\ref{sec:discussion} limitations, and Section~\ref{sec:conclusion} concludes.

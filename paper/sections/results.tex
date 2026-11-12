@@ -1,0 +1,60 @@
+\section{Results}
+\label{sec:results}
+\begin{table*}[t]
+\centering
+\caption{Test performance on the official C-MAPSS test sets (mean $\pm$ std over \FdOneNSeeds{} seeds; RUL capped at 125). Source: \texttt{results/fd00*/benchmark\_table.txt}. NASA scores are sums over the test engines and are not comparable across datasets.}
+\label{tab:main}
+\input{generated/table_main.tex}
+\end{table*}
+
+\subsection{FD001: near-IID clients}
+Federated training reaches an RMSE of \FdOneFedRmse{} against \FdOneCentRmse{} centralised and \FdOneLocalRmse{} local-only (Table~\ref{tab:main}). The federated NASA score (\FdOneFedNasa{}) is lower than centralised (\FdOneCentNasa{}), but the gap lies within one standard deviation of the centralised score (\FdOneCentNasaStd{}), so we do not claim a significant advantage. \todo{Significance test or more seeds before interpreting; the README attributes the gap to implicit regularisation, which is a hypothesis we have not tested}
+
+\subsection{FD002: heterogeneous regimes}
+On FD002, federated RMSE is \FdTwoFedRmse{} against \FdTwoLocalRmse{} for local-only training, a reduction of about 3 cycles (12\%), and the NASA score falls from \FdTwoLocalNasa{} to \FdTwoFedNasa{}. Centralised training remains better (\FdTwoCentRmse{}, \FdTwoCentNasa{}), so a gap to the pooled-data bound persists.
+
+\subsection{Per-seed results and convergence}
+Table~\ref{tab:seeds} lists the final-round federated results per seed, and Fig.~\ref{fig:conv} the test RMSE of the global model per round.
+
+\begin{table}[t]
+\centering
+\caption{Federated global model at round 5, per seed (from \texttt{results\_physical\_seed*.json}).}
+\label{tab:seeds}
+\small
+\input{generated/table_seeds.tex}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[width=\columnwidth,height=5.2cm,xlabel={Round},ylabel={Test RMSE (cycles)},ymax=50,legend pos=north east,legend style={font=\scriptsize},grid=both,grid style={gray!20}]
+\foreach \c in {s42,s100,s2024,s7,s777}{\addplot[blue!40,thin] table[x=round,y=\c]{generated/conv_fd002.dat};}
+\addplot[blue,very thick] table[x=round,y=mean]{generated/conv_fd002.dat};\addlegendentry{FD002 mean}
+\foreach \c in {s42,s100,s2024,s7,s777}{\addplot[red!40,thin] table[x=round,y=\c]{generated/conv_fd001.dat};}
+\addplot[red,very thick] table[x=round,y=mean]{generated/conv_fd001.dat};\addlegendentry{FD001 mean}
+\end{axis}
+\end{tikzpicture}
+\caption{Global-model test RMSE per federated round (thin: seeds). Round 0 is the untrained model. RMSE was still falling at round 5 on FD002.}
+\label{fig:conv}
+\end{figure}
+
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}
+\begin{axis}[ybar,width=\columnwidth,height=5.2cm,ylabel={Test RMSE},symbolic x coords={Constant,Local,Federated,Centralized},xtick=data,x tick label style={font=\scriptsize},legend style={font=\scriptsize,at={(0.5,1.02)},anchor=south,legend columns=2},bar width=8pt,ymin=0]
+\addplot[fill=red!50,error bars/.cd,y dir=both,y explicit] table[x=label,y=fd001,y error=fd001e]{generated/bars_rmse.dat};\addlegendentry{FD001}
+\addplot[fill=blue!50,error bars/.cd,y dir=both,y explicit] table[x=label,y=fd002,y error=fd002e]{generated/bars_rmse.dat};\addlegendentry{FD002}
+\end{axis}
+\end{tikzpicture}
+\caption{RMSE of the four methods (from Table~\ref{tab:main}).}
+\label{fig:bars}
+\end{figure}
+
+\subsection{Edge cost}
+\todo{Measured per-round wall-clock on Raspberry Pi 4 (local training time, aggregation, communication), peak memory, energy, inference latency per window --- none are recorded in results/ yet}
+
+\subsection{FedProx and round sweep}
+\todo{FedProx vs.\ FedAvg on FD002; sweep over rounds and local epochs; FD004 --- not run yet}
+
+\subsection{Prediction plots}
+\todo{RUL predicted vs.\ true per engine (\texttt{plot\_rul.py}) once the figure is exported to paper/figures/}
