@@ -1,76 +1,68 @@
-import os
-import flwr as fl
 import json
-import torch
+import os
+import sys
+
+import flwr as fl
 import numpy as np
-import pandas as pd
-from sklearn.metrics import mean_squared_error
+import torch
 from collections import OrderedDict
-from common import load_cmapss_raw, CmapssRegressor, USEFUL_SENSORS, set_seed, extract_last_sequence, nasa_score
+
+from common import (CmapssRegressor, set_seed, load_scales, build_test_set, nasa_score, rmse, predict)
+
 
 def get_evaluate_fn():
-    with open('global_scale.json', 'r') as f:
-        scales = json.load(f)
-    min_vals = pd.Series(scales['min'])
-    max_vals = pd.Series(scales['max'])
-    train_mean_rul = scales['train_mean_rul']
-    
-    # Load official test set and RULs
-    df_test = load_cmapss_raw('test_FD002.txt')
-    df_test[USEFUL_SENSORS] = (df_test[USEFUL_SENSORS] - min_vals) / (max_vals - min_vals + 1e-7)
-    
-    import zipfile
-    with zipfile.ZipFile('/home/eldemaster/CMAPSSData.zip', 'r') as z:
-        with z.open('RUL_FD002.txt') as f:
-            true_ruls = pd.read_csv(f, header=None).values.flatten()
-            
-    X_te, y_te = [], []
-    for u, group in df_test.groupby('unit'):
-        idx = int(u) - 1
-        x, y = extract_last_sequence(group, true_ruls[idx])
-        if x is not None:
-            X_te.append(x)
-            y_te.append(y)
-            
-    X_te_tensor = torch.tensor(np.array(X_te, dtype=np.float32))
-    y_te = np.array(y_te)
-    
-    baseline_preds = np.full_like(y_te, train_mean_rul)
-    baseline_rmse = np.sqrt(mean_squared_error(y_te, baseline_preds))
-    baseline_nasa = nasa_score(y_te, baseline_preds)
-    
+    scales = load_scales()
+    X_te, y_te = build_test_set(scales)
+    X_te_t = torch.tensor(X_te)
+    base = np.full_like(y_te, scales['train_mean_rul'])
+    b_rmse, b_nasa = rmse(y_te, base), nasa_score(y_te, base)
+
     def evaluate(server_round, parameters, config):
         model = CmapssRegressor()
-        params_dict = zip(model.state_dict().keys(), parameters)
-        state_dict = OrderedDict({k: torch.tensor(v) for k, v in params_dict})
-        model.load_state_dict(state_dict, strict=True)
-        model.eval()
-        
-        with torch.no_grad():
-            preds = model(X_te_tensor).numpy()
-            rmse = np.sqrt(mean_squared_error(y_te, preds))
-            n_score = nasa_score(y_te, preds)
-            
-        print(f"Round {server_round} - Model RMSE: {rmse:.2f}, NASA Score: {n_score:.2f}")
-        return float(rmse), {"model_rmse": float(rmse), "baseline_rmse": float(baseline_rmse), "nasa_score": float(n_score)}
-    
+        sd = OrderedDict({k: torch.tensor(v) for k, v in zip(model.state_dict().keys(), parameters)})
+        model.load_state_dict(sd, strict=True)
+        p = predict(model, X_te_t)
+        r, n = rmse(y_te, p), nasa_score(y_te, p)
+        print(f"Round {server_round} - Model RMSE: {r:.2f}, NASA Score: {n:.2f}", flush=True)
+        return r, {"model_rmse": r, "baseline_rmse": float(b_rmse), "nasa_score": float(n)}
     return evaluate
+
+
+def weighted_avg(metrics):
+    tot = sum(n for n, _ in metrics)
+    keys = metrics[0][1].keys() if metrics else []
+    return {k: sum(n * m[k] for n, m in metrics) / tot for k in keys}
+
 
 if __name__ == "__main__":
     seed = int(os.environ.get("SEED", 777))
+    rounds = int(os.environ.get("ROUNDS", 5))
+    n_clients = int(os.environ.get("MIN_CLIENTS", 2))
+    mu = float(os.environ.get("PROXIMAL_MU", 0.0))          # >0 => FedProx local objective
+    local_epochs = int(os.environ.get("LOCAL_EPOCHS", 2))
+    out_dir = os.environ.get("RESULTS_DIR", "results/fd002")
+    os.makedirs(out_dir, exist_ok=True)
     set_seed(seed)
+    # Seeded initial weights from the server: otherwise Flower asks a random client,
+    # making round 0 depend on which client connects first.
+    init = fl.common.ndarrays_to_parameters([v.numpy() for v in CmapssRegressor().state_dict().values()])
     strategy = fl.server.strategy.FedAvg(
-        fraction_fit=1.0,
-        fraction_evaluate=1.0,
-        min_fit_clients=2,
-        min_evaluate_clients=2,
-        min_available_clients=2,
-        evaluate_fn=get_evaluate_fn()
+        fraction_fit=1.0, fraction_evaluate=1.0,
+        min_fit_clients=n_clients, min_evaluate_clients=n_clients, min_available_clients=n_clients,
+        initial_parameters=init,
+        evaluate_fn=get_evaluate_fn(),
+        on_fit_config_fn=lambda r: {"proximal_mu": mu, "local_epochs": local_epochs},
+        fit_metrics_aggregation_fn=weighted_avg,
+        evaluate_metrics_aggregation_fn=weighted_avg,
     )
-    history = fl.server.start_server(
-        server_address="0.0.0.0:8081",
-        config=fl.server.ServerConfig(num_rounds=5),
-        strategy=strategy
-    )
-    with open(f"results/fd002/results_physical_seed{seed}.json", "w") as f:
-        json.dump({"metrics_centralized": history.metrics_centralized}, f)
+    history = fl.server.start_server(server_address=os.environ.get("BIND", "0.0.0.0:8081"),
+                                     config=fl.server.ServerConfig(num_rounds=rounds), strategy=strategy)
+    if not history.metrics_centralized:
+        sys.exit("No centralized metrics recorded - clients never completed a round")
+    tag = "fedprox" if mu > 0 else "fedavg"
+    name = f"results_physical_seed{seed}.json" if mu == 0 else f"results_physical_{tag}_mu{mu}_seed{seed}.json"
+    with open(os.path.join(out_dir, name), "w") as f:
+        json.dump({"metrics_centralized": history.metrics_centralized,
+                   "metrics_distributed_fit": history.metrics_distributed_fit,
+                   "metrics_distributed": history.metrics_distributed,
+                   "config": {"seed": seed, "rounds": rounds, "mu": mu, "local_epochs": local_epochs}}, f)

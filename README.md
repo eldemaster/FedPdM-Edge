@@ -79,11 +79,22 @@ Evaluated rigorously across multiple random seeds on the standard **NASA C-MAPSS
 
 > **Key Finding:** The federated swarm virtually matches the theoretical RMSE ceiling of centralized data pooling ($14.92$ vs $14.75$) while **outperforming centralized training on the NASA Risk Score** ($394.85$ vs $425.36$). The federated aggregation introduces implicit regularization that protects against local sensor overfitting.
 
-### 2. NASA C-MAPSS FD002 (Heterogeneous Operating Regimes)
-*Evaluated across 6 distinct altitude, Mach number, and throttle combinations*:
+### 2. NASA C-MAPSS FD002 (official test set, all 259 engines)
+*5 seeds, mean ± std, 10 local epochs / 5 federated rounds x 2 epochs; measured, see `results/EXPERIMENTS.md`*:
 
-| Architecture | Model Privacy | Test RMSE (Cycles) | NASA Asymmetric Score |
-| :--- | :---: | :---: | :---: |
+| Architecture | Test RMSE | NASA Score |
+| :--- | :---: | :---: |
+| Constant Baseline | 43.51 | 63,730 |
+| Isolated Local Edge | 25.01 ± 0.54 | 11,937 ± 2,207 |
+| FedAvg, physical 2xRPi4 + Ubuntu server | 22.27 ± 0.44 | 6,037 ± 1,030 |
+| Centralized (10 epochs) | 20.39 ± 1.11 | 3,395 ± 972 |
+
+In-process simulation (same training code), FedAvg 5 rounds 22.20 ± 0.42; FedProx mu=0.01 22.20 ± 0.58, mu=0.1 22.86 ± 0.93 (no gain); FedAvg 15 rounds 19.27 ± 1.30 (not yet compared with an equal-epoch centralized run).
+Per-node cost (physical, 2 local epochs/round): RPi1 ~12.8 s (16.7k windows), RPi2 ~17.3 s (25.0k windows), peak RSS ~570-620 MB.
+
+> The FD001 table above is from the pre-audit pipeline and was **not re-run** here.
+
+--- | :---: | :---: | :---: |
 | **Constant Baseline** | N/A | $43.41 \pm 0.00$ | $59{,}296.05 \pm 0.00$ |
 | **Isolated Local Edge** | 100% Local | $24.96 \pm 0.99$ | $10{,}702.21 \pm 2{,}404.11$ |
 | **FedAvg Swarm (FedPdM)** | **100% Local** | **$21.98 \pm 0.99$** | **$4{,}877.92 \pm 2{,}291.46$** |
