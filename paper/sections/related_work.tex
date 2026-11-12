@@ -1,0 +1,11 @@
+\section{Related Work}
+\label{sec:related}
+\subsection{RUL prediction on C-MAPSS}
+The C-MAPSS turbofan simulations~\cite{saxena2008damage} are the common benchmark for data-driven prognostics. Deep models replaced hand-crafted health indicators: Babu et al.\ applied CNNs to RUL regression~\cite{babu2016cnn}, Zheng et al.\ used LSTMs~\cite{zheng2017lstm}, and Li et al.\ proposed a deep CNN with time-window inputs evaluated on all four subsets~\cite{li2018cnn}. Surveys are given in~\cite{lei2018prognostics}. All of these train on pooled data; our work keeps a comparable per-window 1D-CNN but trains it across sites.
+
+\subsection{Federated learning}
+FedAvg~\cite{mcmahan2017fedavg} averages locally trained weights, weighted by client sample counts. Non-IID data degrades it~\cite{zhao2018noniid}; FedProx adds a proximal term to limit client drift~\cite{li2020fedprox}. Overviews of open problems are in~\cite{kairouz2021advances,li2020challenges}. Flower~\cite{beutel2020flower} is the framework we use because it runs on heterogeneous devices including ARM boards.
+
+\subsection{Federated and edge PdM}
+\todo{Survey of federated PdM / FL on C-MAPSS and edge-deployed prognostics; add only verified references (title, venue, year checked). Position against papers reporting the NASA score.}
+Edge computing motivates on-site processing~\cite{shi2016edge,zhou2019edge}; \todo{discuss resource-constrained FL on Raspberry Pi class devices with verified citations}.

@@ -1,0 +1,43 @@
+\documentclass[journal]{IEEEtran}
+\usepackage{cite}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs,multirow}
+\usepackage{xcolor}
+\usepackage{pgfplots}\pgfplotsset{compat=1.16}
+\usepackage[hidelinks]{hyperref}
+
+% Marker for pending / unmeasured content. Grep for \todo to list all open items.
+\newcommand{\todo}[1]{\textcolor{red}{\textbf{[TODO: #1]}}}
+\input{generated/macros.tex}
+
+\begin{document}
+
+\title{Federated Predictive Maintenance on Resource-Constrained Edge Nodes: Swarm Learning for Turbofan RUL Estimation under Asymmetric Risk}
+
+\author{Alessandro~De~Martini,~\IEEEmembership{Research Engineer,}
+        Stefan~Forsstr\"om,~\IEEEmembership{Mid Sweden University,}
+        and~\todo{University of Oulu co-authors}%
+\thanks{A. De Martini and S. Forsstr\"om are with Mid Sweden University, Sundsvall, Sweden. \todo{Oulu affiliation(s)}}%
+\thanks{This work was supported by the Interreg Aurora project ResilientEdge (grant 20373282).}}
+
+\markboth{Draft --- FedPdM-Edge}{De Martini \MakeLowercase{\textit{et al.}}: Federated PdM on Edge Nodes}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/architecture}
+\input{sections/method}
+\input{sections/setup}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+
+\section*{Acknowledgment}
+Supported by the Interreg Aurora project ResilientEdge (grant 20373282). \todo{Align AI-use disclosure with the agreed IEEE wording}
+
+\bibliographystyle{IEEEtran}
+\bibliography{references}
+\end{document}

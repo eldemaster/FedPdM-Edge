@@ -1,0 +1,12 @@
+\begin{tabular}{llcrr}\toprule
+Dataset & Method & Privacy & RMSE (cycles) & NASA score \\\midrule
+\multirow{4}{*}{FD001} & Constant baseline & n/a & $40.46\pm0.00$ & $17\,301.19\pm0.00$ \\
+ & Isolated local (avg.) & local & $15.55\pm0.46$ & $464.43\pm74.67$ \\
+ & FedAvg swarm (ours) & local & \textbf{$14.92\pm0.42$} & \textbf{$394.85\pm45.73$} \\
+ & Centralized (upper bound) & exposed & $14.75\pm0.69$ & $425.36\pm94.56$ \\
+\midrule
+\multirow{4}{*}{FD002} & Constant baseline & n/a & $43.41\pm0.00$ & $59\,296.05\pm0.00$ \\
+ & Isolated local (avg.) & local & $24.96\pm0.99$ & $10\,702.21\pm2\,404.11$ \\
+ & FedAvg swarm (ours) & local & \textbf{$21.98\pm0.99$} & \textbf{$4\,877.92\pm2\,291.46$} \\
+ & Centralized (upper bound) & exposed & $19.57\pm0.86$ & $2\,974.50\pm1\,405.23$ \\
+\bottomrule\end{tabular}
