@@ -1,15 +1,17 @@
 \section{Introduction}
 \label{sec:intro}
-Condition monitoring in manufacturing produces high-rate telemetry (temperatures, pressures, vibration, actuator states) that encodes process know-how and is treated as proprietary. Shipping it to a third-party cloud raises exfiltration and regulatory concerns, while keeping it local starves each plant of failure examples: catastrophic degradation is rare at any single site, so locally trained prognostic models overfit or miss late-life behaviour.
+Predictive maintenance models need run-to-failure telemetry that may be scarce and commercially sensitive. Federated learning (FL) lets data owners train a shared model without pooling their raw records, but exchanging model updates is not itself a formal privacy guarantee~\cite{mcmahan2017fedavg,abadi2016dpsgd}. Practical RUL work must therefore distinguish data locality from protections such as differential privacy and secure aggregation.
 
-Federated learning (FL)~\cite{mcmahan2017fedavg} offers a middle path: sites train locally and share only parameters. Most FL studies are simulated on a single workstation, however, and say little about whether the approach holds on the low-power ARM hardware that sits next to machines. A second gap is evaluation: RUL errors are not symmetric, since a late prediction can cause an unplanned failure while an early one only costs some useful life. The standard NASA score~\cite{saxena2008damage} encodes this, yet is often omitted next to RMSE.
+The C-MAPSS benchmark is well established for RUL prediction, and centralized CNN, recurrent, and attention-based approaches report strong results across its four subsets~\cite{li2018cnn,zheng2017lstm,wang2024adamsamtcn,liu2025moeformer}. Federated RUL studies already include C-MAPSS experiments, FedAvg/FedProx, personalization layers, and pruning~\cite{rosero2020federated,soderkvist2024collaborative,chen2023pruning}. More recent N-CMAPSS and C-MAPSS studies extend this work to airline collaboration and controlled heterogeneous benchmarks~\cite{landau2025aircraftfl,sorrenti2026fedcmapss}. Thus neither federated RUL nor C-MAPSS federation alone is novel. The remaining practical question addressed here is what performance a compact federated model obtains in a physical two-client Raspberry Pi deployment, under explicit local-only and centralized reference runs.
 
-This paper studies federated RUL regression end to end on physical edge nodes. Our contributions are:
+RUL errors also have unequal consequences: a late prediction may leave less time to intervene than an equally sized early prediction. The NASA/PHM score captures this asymmetry in evaluation~\cite{saxena2008damage,saxena2008metrics}, but the current implementation trains with symmetric MSE. We report the score alongside RMSE and treat score-aligned training as future work.
+
+This paper is an initial systems evaluation, not a new FL algorithm or a state-of-the-art accuracy claim. Its contributions are:
 \begin{itemize}
-\item a federated PdM pipeline (Flower, PyTorch 1D-CNN) deployed on Raspberry Pi 4 clients with a coordinator server, with data-parity-checked comparison against constant, local-only and centralised baselines;
-\item an evaluation on the official C-MAPSS FD001 and FD002 test sets, five seeds, reporting both RMSE and the asymmetric NASA score;
-\item evidence that the benefit of federation depends on heterogeneity: on FD001 the clients are near-IID and federated training is on par with centralised, whereas on FD002 it clearly beats isolated training.
+\item a physical Flower/PyTorch 1D-CNN federation testbed with two Raspberry Pi 4 clients and an Ubuntu coordinator;
+\item an initial comparison with local-only and centralized training on official FD001 and FD002 test sets, reporting RMSE and the asymmetric NASA score over five nominal seeds;
+\item an empirical account of how performance differs between the tested FD001 and FD002 settings, together with limitations concerning partition provenance, short training, privacy protections, and unmeasured edge costs.
 \end{itemize}
-\todo{Add research questions / outline paragraph once the experimental scope (FedProx, round sweep, edge cost) is fixed}
+The current evidence does not establish that the FD002 split isolates operating-condition shift, that federation is statistically superior, or that the system provides encrypted transport or formal privacy. These claims require additional experiments and are tracked with \todo{} markers.
 
 The remainder is organised as follows: Section~\ref{sec:related} reviews related work, Section~\ref{sec:arch} the architecture, Section~\ref{sec:method} the method, Section~\ref{sec:setup} the setup, Section~\ref{sec:results} the results, Section~\ref{sec:discussion} limitations, and Section~\ref{sec:conclusion} concludes.

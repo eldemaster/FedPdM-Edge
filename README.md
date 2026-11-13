@@ -17,7 +17,7 @@ In Industry 4.0 manufacturing plants, operational machinery telemetry (turbomach
 However, isolated plants frequently encounter data scarcity: rare catastrophic mechanical failures happen infrequently at a single facility, causing locally-trained models to overfit or miss degradation anomalies. 
 
 **FedPdM-Edge** solves this trade-off using **Swarm Intelligence and Federated Learning (Flower + PyTorch 1D-CNN)**:
-- **Zero Raw Data Sharing:** Plants exclusively exchange encrypted neural network weights $\mathbf{w}_i^{(t)}$. Raw sensor streams never leave the plant boundary.
+- **Local Training Data:** The checked-in clients train on local telemetry and exchange model parameters. TLS, secure aggregation, and differential privacy are not configured; model updates may leak information and transport is not claimed to be encrypted.
 - **Asymmetric Risk Optimization:** Evaluated against the exponential **NASA Asymmetric Scoring Function**, penalizing dangerous late failure predictions far more heavily than conservative early predictions.
 - **Physical Edge Viability:** Tested and benchmarked across physical ARM single-board clusters (Raspberry Pi 4) and heterogeneous edge servers.
 
@@ -38,7 +38,7 @@ flowchart TD
         end
     end
 
-    Bus["Secure gRPC / mTLS Federated Transport Layer<br/>[Weight Tensors: w_i <==> Global Model: w]"]
+    Bus["Flower gRPC transport<br/>[Model parameters: w_i <==> Global Model: w]"]
 
     ModelA <-->|"Local Weights w_1"| Bus
     ModelB <-->|"Local Weights w_2"| Bus
@@ -57,7 +57,7 @@ flowchart TD
 | **Plant Edge Node** | Raspberry Pi 4 / Edge Host | Runs local 1D-CNN training over sliding windows ($W=30$). | 100% On-Premise; raw data retained. |
 | **Data Scaler** | Preprocessor | Min-Max sensor normalization across operating regimes. | Standardized local representations. |
 | **1D-CNN Model** | PyTorch Regression Engine | 2 Conv1d layers + MaxPool1d + Fully Connected layers. | Low-latency inference on low-power ARM CPUs. |
-| **Federated Bus** | gRPC / TLS Link | Protocol transport exchanging exclusively model parameters. | Zero raw sensor streaming across the WAN. |
+| **Federated Bus** | Flower gRPC | Exchanges model parameters; TLS, secure aggregation, and differential privacy are not configured in the checked-in client/server. | Raw training telemetry stays on clients; model-update leakage is not mitigated. |
 | **Coordinator Hub** | Swarm Hub (Flower) | Aggregates weights: $\mathbf{w}^{(t+1)} = \sum \frac{n_i}{N} \mathbf{w}_i^{(t)}$. | Global consensus model without centralization. |
 | **Risk Engine** | Production Evaluator | NASA asymmetric penalty metric ($S = \sum e^{\alpha \Delta} - 1$). | Exponential penalty for late failure predictions. |
 
@@ -81,6 +81,8 @@ Evaluated rigorously across multiple random seeds on the standard **NASA C-MAPSS
 
 ### 2. NASA C-MAPSS FD002 (official test set, all 259 engines)
 *5 seeds, mean ± std, 10 local epochs / 5 federated rounds x 2 epochs; measured, see `results/EXPERIMENTS.md`*:
+
+The underlying FD002 dataset contains six operating conditions, but the archived client partition provenance remains unresolved; see `docs/literature_review.md`. Do not interpret these results as an operating-condition partition until the assignments are recovered and recorded.
 
 | Architecture | Test RMSE | NASA Score |
 | :--- | :---: | :---: |
@@ -106,7 +108,7 @@ FedPdM-Edge/
 ├── compute_global_scale.py   # Global min-max scaling across operating conditions
 ├── final_benchmark.py        # Reproducible 4-way comparison (Constant, Local, FedAvg, Centralized)
 ├── run_fd002_federated.sh    # Multi-client local/remote test runner
-├── setup_fd002.py            # Non-IID operating condition partition generator
+├── setup_fd002.py            # Lifespan-sorted label-skew partition generator
 ├── sanity_check.py           # Verification gate for model convergence and data pipelines
 ├── plot_rul.py               # Generates RUL prediction vs ground truth curves
 ├── deploy.sh                 # Rsync deployment script to Raspberry Pi edge nodes
