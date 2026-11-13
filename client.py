@@ -1,3 +1,4 @@
+import argparse
 import os
 import sys
 import time
@@ -10,7 +11,7 @@ import torch
 
 from common import (CmapssRegressor, USEFUL_SENSORS, set_seed, load_cmapss_raw, load_scales,
                     load_partition, apply_scale, make_xy, make_loader, split_units,
-                    train_epochs, predict, rmse)
+                    train_epochs, predict, rmse, get_loss_fn)
 
 
 def peak_rss_mb():
@@ -19,11 +20,12 @@ def peak_rss_mb():
 
 
 class SupervisedClient(fl.client.NumPyClient):
-    def __init__(self, model, train_loader, val_x, val_y, lr=1e-3):
+    def __init__(self, model, train_loader, val_x, val_y, lr=1e-3, loss_fn=None):
         self.model = model
         self.train_loader = train_loader
         self.val_x, self.val_y = val_x, val_y
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr)
+        self.loss_fn = loss_fn if loss_fn is not None else get_loss_fn("mse")
 
     def get_parameters(self, config):
         return [v.cpu().numpy() for v in self.model.state_dict().values()]
@@ -39,7 +41,7 @@ class SupervisedClient(fl.client.NumPyClient):
         glob = [p.detach().clone() for p in self.model.parameters()]
         t0 = time.perf_counter()
         train_epochs(self.model, self.train_loader, epochs, mu=mu, global_params=glob,
-                     optimizer=self.optimizer)
+                     optimizer=self.optimizer, loss_fn=self.loss_fn)
         dt = time.perf_counter() - t0
         print(f"FIT mu={mu} epochs={epochs} train_time_s={dt:.2f} peak_rss_mb={peak_rss_mb():.1f}", flush=True)
         return self.get_parameters({}), len(self.train_loader.dataset), \
@@ -53,6 +55,24 @@ class SupervisedClient(fl.client.NumPyClient):
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--loss-fn", default=os.environ.get("LOSS_FN", "mse"), choices=["mse", "asymmetric"])
+    ap.add_argument("--alpha-late", type=float, default=None)
+    ap.add_argument("--alpha-early", type=float, default=None)
+    args, _ = ap.parse_known_args()
+
+    loss_kwargs = {}
+    if args.loss_fn == "asymmetric":
+        if args.alpha_late is not None:
+            loss_kwargs["alpha_late"] = args.alpha_late
+        elif "ALPHA_LATE" in os.environ:
+            loss_kwargs["alpha_late"] = float(os.environ["ALPHA_LATE"])
+        if args.alpha_early is not None:
+            loss_kwargs["alpha_early"] = args.alpha_early
+        elif "ALPHA_EARLY" in os.environ:
+            loss_kwargs["alpha_early"] = float(os.environ["ALPHA_EARLY"])
+    loss_fn = get_loss_fn(args.loss_fn, **loss_kwargs)
+
     seed = int(os.environ.get("SEED", 42))
     cid = os.environ.get("CLIENT_ID")
     if cid is None:
@@ -70,6 +90,6 @@ if __name__ == "__main__":
     X, y = make_xy(df, tr_units)
     Xv, yv = make_xy(df, va_units)
     loader = make_loader(X, y, 64, seed=seed + int(cid))
-    print(f"client {cid}: {len(tr_units)} train units ({len(X)} windows), {len(va_units)} val units", flush=True)
-    client = SupervisedClient(CmapssRegressor(), loader, torch.tensor(Xv), yv)
+    print(f"client {cid}: {len(tr_units)} train units ({len(X)} windows), {len(va_units)} val units, loss={args.loss_fn}", flush=True)
+    client = SupervisedClient(CmapssRegressor(), loader, torch.tensor(Xv), yv, loss_fn=loss_fn)
     fl.client.start_client(server_address=fl_server, client=client.to_client())

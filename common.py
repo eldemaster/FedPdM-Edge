@@ -86,6 +86,58 @@ def nasa_score(y_true, y_pred):
     return float(np.sum(np.where(d < 0, np.exp(-d / 13.0), np.exp(d / 10.0)) - 1))
 
 
+def late_prediction_rate(y_true, y_pred):
+    """Fraction of predictions that overestimate RUL (late failure prediction: y_pred > y_true)."""
+    return float(np.mean(np.asarray(y_pred, dtype=np.float64) > np.asarray(y_true, dtype=np.float64)))
+
+
+class AsymmetricRULLoss(nn.Module):
+    """Asymmetric quadratic loss for Remaining Useful Life (RUL) regression.
+
+    Aligns local and federated optimization with the safety-critical NASA
+    Asymmetric Scoring Function (``nasa_score``), which penalizes late failure
+    predictions (``y_pred > y_true``, i.e. overestimating RUL and risking
+    unpredicted failure) exponentially more heavily than conservative early
+    predictions (``y_pred < y_true``).
+
+    Unlike the raw exponential NASA score—whose gradients grow as
+    ``exp(|d|/10)`` and explode on large early-training errors—this loss uses
+    a smooth, differentiable asymmetric squared-error surrogate:
+
+        L(d) = alpha_late  * d^2   if d >= 0  (late prediction: y_pred > y_true)
+             = alpha_early * d^2   if d <  0  (early prediction: y_pred < y_true)
+
+    where ``d = y_pred - y_true``. When ``alpha_late > alpha_early > 0``,
+    overestimating RUL is penalized strictly more than equal-magnitude
+    underestimation, while gradients remain bounded linearly in ``|d|`` and
+    continuous at ``d = 0``.
+    """
+
+    def __init__(self, alpha_late: float = 2.5, alpha_early: float = 0.5):
+        super().__init__()
+        if alpha_late <= 0 or alpha_early <= 0:
+            raise ValueError("alpha_late and alpha_early must be positive")
+        if alpha_late <= alpha_early:
+            raise ValueError("alpha_late must be strictly greater than alpha_early")
+        self.alpha_late = float(alpha_late)
+        self.alpha_early = float(alpha_early)
+
+    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor) -> torch.Tensor:
+        d = y_pred - y_true
+        weights = torch.where(d >= 0, self.alpha_late, self.alpha_early)
+        return torch.mean(weights * (d ** 2))
+
+
+def get_loss_fn(name: str = "mse", **kwargs) -> nn.Module:
+    """Return a PyTorch loss module by name (``'mse'`` or ``'asymmetric'``)."""
+    key = (name or "mse").strip().lower()
+    if key == "mse":
+        return nn.MSELoss(**kwargs)
+    if key in ("asymmetric", "asym", "asymmetric_rul"):
+        return AsymmetricRULLoss(**kwargs)
+    raise ValueError(f"Unknown loss function {name!r}; expected 'mse' or 'asymmetric'")
+
+
 def load_rul(filename):
     import zipfile
     with zipfile.ZipFile(cmapss_zip_path(), 'r') as z:
@@ -148,10 +200,15 @@ def split_units(units, val_frac=0.1, seed=0):
     return [int(x) for x in u[k:]], [int(x) for x in u[:k]]
 
 
-def train_epochs(model, loader, epochs, lr=1e-3, mu=0.0, global_params=None, optimizer=None):
+def train_epochs(model, loader, epochs, lr=1e-3, mu=0.0, global_params=None, optimizer=None, loss_fn=None):
     """Local training. mu>0 adds the FedProx term mu/2*||w - w_global||^2."""
     opt = optimizer or torch.optim.Adam(model.parameters(), lr=lr)
-    crit = nn.MSELoss()
+    if loss_fn is None:
+        crit = nn.MSELoss()
+    elif isinstance(loss_fn, nn.Module):
+        crit = loss_fn
+    else:
+        crit = get_loss_fn(loss_fn)
     model.train()
     if mu > 0:
         ref = [p.detach().clone() for p in global_params]
