@@ -1,133 +1,97 @@
 #!/usr/bin/env python3
-"""Generate tables, macros and pgfplots data for the paper from results/.
-
-Pure standard library (no numpy/matplotlib needed). Run from anywhere:
-    python3 paper/make_figures.py
-Outputs go to paper/generated/. Nothing is hard-coded: every number is parsed
-from results/<ds>/benchmark_table.txt or results/<ds>/results_physical_seed*.json.
-Missing inputs yield \\todo{} placeholders instead of invented values.
-"""
-import glob, json, re, statistics as st
+"""Generate paper tables only from five-seed rows in results/reproducible."""
+import csv
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-OUT = Path(__file__).resolve().parent / "generated"
+SOURCE = ROOT / 'results' / 'reproducible' / 'summary.csv'
+OUT = Path(__file__).resolve().parent / 'generated'
 OUT.mkdir(exist_ok=True)
-DATASETS = [("fd001", "FD001"), ("fd002", "FD002")]
-ROWS = [("Constant Baseline", "Constant baseline", "n/a"),
-        ("Local-Only", "Isolated local (avg.)", "local"),
-        ("Federated", "FedAvg swarm (ours)", "local + updates shared"),
-        ("Centralized", "Centralized reference", "pooled data")]
-PAT = re.compile(r"^(\S.*?)\s*(?:\(.*?\))?\s*:\s*RMSE = ([\d.]+) ± ([\d.]+) \| NASA Score = ([\d.]+) ± ([\d.]+)")
-TODO = r"\todo{pending}"
 
 
-def fmt(x, nd=2):
-    s = f"{x:,.{nd}f}"
-    return s.replace(",", r"\,")
+def fmt(value):
+    return f'{float(value):,.2f}'.replace(',', r'\,')
 
 
-def parse_table(ds):
-    p = ROOT / "results" / ds / "benchmark_table.txt"
-    res = {}
-    if not p.exists():
-        return res
-    for line in p.read_text(encoding="utf-8").splitlines():
-        m = PAT.match(line.strip())
-        if m:
-            res[m.group(1).strip()] = tuple(float(m.group(i)) for i in range(2, 6))
-    return res
+def esc(value):
+    return str(value).replace('_', r'\_')
 
 
-def load_seeds(ds):
-    out = {}
-    for f in sorted(glob.glob(str(ROOT / "results" / ds / "results_physical_seed*.json"))):
-        seed = int(re.search(r"seed(\d+)", f).group(1))
-        m = json.load(open(f))["metrics_centralized"]
-        out[seed] = m
-    return out
+def main():
+    records = {}
+    tests = []
+    if SOURCE.exists():
+        with SOURCE.open(newline='', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                if row.get('comparison') and row.get('paired_sign_flip_p'):
+                    tests.append(row)
+                if (row.get('method') and row.get('metric') in ('rmse', 'nasa')
+                        and row.get('scope', 'global') == 'global' and int(row['n']) >= 5):
+                    records[(row['dataset'], row['partition'], row['method'], row['metric'])] = row
+    clients = {}
+    if SOURCE.exists():
+        with SOURCE.open(newline='', encoding='utf-8') as f:
+            for row in csv.DictReader(f):
+                if (row.get('method') and row.get('scope') == 'client' and row.get('metric') in ('rmse','nasa')
+                        and int(row['n']) >= 5):
+                    clients[(row['dataset'],row['partition'],row['method'],int(row['client_id']),row['metric'])]=row
+
+    def performance_table(filename, groups, methods):
+        lines=[r'\begin{tabular}{lllrrr}',r'\toprule',
+               r'Dataset & Partition & Method & $n$ & RMSE & NASA score \\',r'\midrule']
+        count=0
+        for ds,part in groups:
+            for method in methods:
+                r=records.get((ds,part,method,'rmse')); s=records.get((ds,part,method,'nasa'))
+                if not r or not s: continue
+                lines.append(f'{ds} & {esc(part)} & {esc(method)} & {r["n"]} & '
+                             f'${fmt(r["mean"])}\\pm{fmt(r["std"])}$ & '
+                             f'${fmt(s["mean"])}\\pm{fmt(s["std"])}$ \\\\')
+                count+=1
+        if not count: lines.append(r'\multicolumn{6}{c}{No complete five-seed rows available.} \\')
+        lines += [r'\bottomrule',r'\end{tabular}']
+        (OUT/filename).write_text('\n'.join(lines)+'\n',encoding='utf-8')
+
+    performance_table('table_main.tex',[(f'FD00{i}','iid') for i in range(1,5)],('centralized','local_only','fedavg'))
+    performance_table('table_algorithms.tex',[('FD002','regime'),('FD004','regime')],
+                       ('centralized','local_only','fedavg','fedprox','fedadam','federated_asymmetric','asymmetric','cnn_lstm'))
+    performance_table('table_partitions.tex',[(ds,p) for ds in ('FD002','FD004') for p in ('iid','regime','engine_imbalance')],
+                       ('fedavg','fedprox','fedadam'))
+
+    lines=[r'\begin{tabular}{llllrr}',r'\toprule',
+           r'Dataset & Partition & Method & Client & RMSE & NASA score \\',r'\midrule']
+    count=0
+    for ds,part in (('FD002','regime'),('FD004','regime')):
+        for method in ('centralized','local_only','fedavg','fedprox','fedadam','federated_asymmetric','asymmetric','cnn_lstm'):
+            for cid in (0,1):
+                r=clients.get((ds,part,method,cid,'rmse')); s=clients.get((ds,part,method,cid,'nasa'))
+                if not r or not s: continue
+                lines.append(f'{ds} & {esc(part)} & {esc(method)} & {cid+1} & '
+                             f'${fmt(r["mean"])}\\pm{fmt(r["std"])}$ & '
+                             f'${fmt(s["mean"])}\\pm{fmt(s["std"])}$ \\\\')
+                count+=1
+    if not count: lines.append(r'\multicolumn{6}{c}{No complete five-seed client rows available.} \\')
+    lines += [r'\bottomrule',r'\end{tabular}']
+    (OUT/'table_clients.tex').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+
+    lines=[r'\begin{tabular}{llllr}',r'\toprule',r'Dataset & Partition & Comparison & Metric & paired $p$ \\',r'\midrule']
+    count=0
+    for row in tests:
+        key_comparisons=('fedavg_vs_centralized','fedavg_vs_local_only')
+        method_comparisons=key_comparisons+('fedavg_vs_fedprox','fedavg_vs_fedadam','fedavg_vs_federated_asymmetric',
+                                           'centralized_vs_asymmetric','centralized_vs_cnn_lstm')
+        primary_regime=(row['dataset'] in ('FD002','FD004') and row['partition']=='regime'
+                        and row['comparison'] in method_comparisons)
+        baseline_fd001=(row['dataset']=='FD001' and row['partition']=='iid' and row['comparison'] in key_comparisons)
+        if ((primary_regime or baseline_fd001) and int(row['n'])>=5):
+            lines.append(f'{row["dataset"]} & {esc(row["partition"])} & {esc(row["comparison"])} & {row["metric"]} & '
+                         f'{float(row["paired_sign_flip_p"]):.4f} \\\\')
+            count+=1
+    if not count: lines.append(r'\multicolumn{5}{c}{No complete five-seed paired tests available.} \\')
+    lines += [r'\bottomrule',r'\end{tabular}']
+    (OUT/'table_significance.tex').write_text('\n'.join(lines)+'\n',encoding='utf-8')
+    (OUT/'macros.tex').write_text('% No scalar macros: all manuscript values are generated in tables.\n',encoding='utf-8')
+    print(f'generated five-seed tables from {SOURCE if SOURCE.exists() else "no summary data"}')
 
 
-macros, tex = [], []
-tables = {ds: parse_table(ds) for ds, _ in DATASETS}
-seeds = {ds: load_seeds(ds) for ds, _ in DATASETS}
-
-# ---- main table -----------------------------------------------------------
-tex.append(r"\begin{tabular}{llcrr}\toprule")
-tex.append(r"Dataset & Method & Data placement & RMSE (cycles) & NASA score \\\midrule")
-for i, (ds, label) in enumerate(DATASETS):
-    t = tables[ds]
-    for key, name, priv in ROWS:
-        v = next((t[k] for k in t if k.startswith(key)), None)
-        first = rf"\multirow{{4}}{{*}}{{{label}}}" if key == ROWS[0][0] else ""
-        if v:
-            fed = key == "Federated"
-            r = rf"${fmt(v[0])}\pm{fmt(v[1])}$"; s = rf"${fmt(v[2])}\pm{fmt(v[3])}$"
-            if fed: r, s = rf"\textbf{{{r}}}", rf"\textbf{{{s}}}"
-        else:
-            r = s = TODO
-        tex.append(rf"{first} & {name} & {priv} & {r} & {s} \\")
-    if i < len(DATASETS) - 1:
-        tex.append(r"\midrule")
-tex.append(r"\bottomrule\end{tabular}")
-(OUT / "table_main.tex").write_text("\n".join(tex) + "\n")
-
-# ---- macros + per-seed table + convergence data ---------------------------
-tex = [r"\begin{tabular}{lrrrr}\toprule",
-       r"Seed & \multicolumn{2}{c}{FD001 (round 5)} & \multicolumn{2}{c}{FD002 (round 5)} \\",
-       r"& RMSE & NASA & RMSE & NASA \\\midrule"]
-all_seeds = sorted(set().union(*[set(s) for s in seeds.values()]))
-for sd in all_seeds:
-    cells = []
-    for ds, _ in DATASETS:
-        m = seeds[ds].get(sd)
-        cells += [fmt(m["model_rmse"][-1][1]), fmt(m["nasa_score"][-1][1], 1)] if m else [TODO, TODO]
-    tex.append(f"{sd} & " + " & ".join(cells) + r" \\")
-tex.append(r"\midrule")
-for ds, label in DATASETS:
-    s = seeds[ds]
-    if not s:
-        continue
-    rm = [m["model_rmse"][-1][1] for m in s.values()]
-    ns = [m["nasa_score"][-1][1] for m in s.values()]
-    pre = "FdOne" if ds == "fd001" else "FdTwo"
-    macros += [rf"\newcommand{{\{pre}FedRmseMeanJson}}{{{fmt(st.mean(rm))}}}",
-               rf"\newcommand{{\{pre}FedRmseSampleStd}}{{{fmt(st.stdev(rm))}}}",
-               rf"\newcommand{{\{pre}FedNasaSampleStd}}{{{fmt(st.stdev(ns),1)}}}",
-               rf"\newcommand{{\{pre}NSeeds}}{{{len(s)}}}"]
-for ds, _ in DATASETS:
-    pre = "FdOne" if ds == "fd001" else "FdTwo"
-    for key, nm in [("Constant", "Const"), ("Local", "Local"), ("Federated", "Fed"), ("Centralized", "Cent")]:
-        v = next((tables[ds][k] for k in tables[ds] if k.startswith(key)), None)
-        for j, q in enumerate(["Rmse", "RmseStd", "Nasa", "NasaStd"]):
-            val = fmt(v[j], 2) if v else TODO
-            macros.append(rf"\newcommand{{\{pre}{nm}{q}}}{{{val}}}")
-tex.append(r"\bottomrule\end{tabular}")
-(OUT / "table_seeds.tex").write_text("\n".join(tex) + "\n")
-(OUT / "macros.tex").write_text("% auto-generated by make_figures.py\n" + "\n".join(macros) + "\n")
-
-# convergence: global-model RMSE on official test set vs round, one column per seed
-for ds, _ in DATASETS:
-    s = seeds[ds]
-    if not s:
-        continue
-    sd = sorted(s)
-    rounds = [r for r, _ in s[sd[0]]["model_rmse"]]
-    lines = ["round " + " ".join(f"s{x}" for x in sd) + " mean"]
-    for i, r in enumerate(rounds):
-        vals = [s[x]["model_rmse"][i][1] for x in sd]
-        lines.append(f"{r} " + " ".join(f"{v:.4f}" for v in vals) + f" {st.mean(vals):.4f}")
-    (OUT / f"conv_{ds}.dat").write_text("\n".join(lines) + "\n")
-    base = s[sd[0]]["baseline_rmse"][0][1]
-    (OUT / f"baseline_{ds}.tex").write_text(f"{base:.4f}")
-
-# bar chart data (RMSE) for the 4-way comparison
-lines = ["x label fd001 fd001e fd002 fd002e"]
-for i, (key, name, _) in enumerate(ROWS):
-    vals = []
-    for ds, _l in DATASETS:
-        v = next((tables[ds][k] for k in tables[ds] if k.startswith(key)), None)
-        vals += [f"{v[0]:.2f}", f"{v[1]:.2f}"] if v else ["nan", "0"]
-    lines.append(f"{i} {key.split('-')[0].split()[0]} " + " ".join(vals))
-(OUT / "bars_rmse.dat").write_text("\n".join(lines) + "\n")
-print("wrote", sorted(p.name for p in OUT.iterdir()))
+if __name__=='__main__': main()

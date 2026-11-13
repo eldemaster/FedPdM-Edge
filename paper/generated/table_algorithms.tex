@@ -1,0 +1,22 @@
+\begin{tabular}{lllrrr}
+\toprule
+Dataset & Partition & Method & $n$ & RMSE & NASA score \\
+\midrule
+FD002 & regime & centralized & 5 & $21.46\pm1.18$ & $5\,762.79\pm2\,135.75$ \\
+FD002 & regime & local\_only & 5 & $23.04\pm0.43$ & $5\,033.02\pm818.81$ \\
+FD002 & regime & fedavg & 5 & $23.50\pm0.63$ & $4\,425.37\pm1\,367.59$ \\
+FD002 & regime & fedprox & 5 & $23.30\pm0.48$ & $4\,581.90\pm1\,331.95$ \\
+FD002 & regime & fedadam & 5 & $78.23\pm23.17$ & $328\,950\,600.23\pm699\,140\,126.97$ \\
+FD002 & regime & federated\_asymmetric & 5 & $27.44\pm0.69$ & $4\,104.37\pm534.95$ \\
+FD002 & regime & asymmetric & 5 & $25.62\pm1.11$ & $4\,009.00\pm422.46$ \\
+FD002 & regime & cnn\_lstm & 5 & $43.14\pm0.02$ & $25\,313.76\pm294.55$ \\
+FD004 & regime & centralized & 5 & $23.41\pm0.49$ & $4\,329.01\pm1\,650.39$ \\
+FD004 & regime & local\_only & 5 & $26.85\pm0.80$ & $8\,006.51\pm2\,168.07$ \\
+FD004 & regime & fedavg & 5 & $26.78\pm0.20$ & $7\,654.82\pm693.72$ \\
+FD004 & regime & fedprox & 5 & $26.88\pm0.81$ & $7\,638.47\pm1\,490.37$ \\
+FD004 & regime & fedadam & 5 & $56.62\pm16.01$ & $8\,996\,132.47\pm18\,447\,615.59$ \\
+FD004 & regime & federated\_asymmetric & 5 & $29.75\pm0.36$ & $6\,513.13\pm332.91$ \\
+FD004 & regime & asymmetric & 5 & $29.95\pm0.82$ & $7\,243.98\pm3\,590.53$ \\
+FD004 & regime & cnn\_lstm & 5 & $43.00\pm0.01$ & $43\,970.10\pm652.10$ \\
+\bottomrule
+\end{tabular}

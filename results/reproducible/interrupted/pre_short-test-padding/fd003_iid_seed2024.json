@@ -1,0 +1,99 @@
+{
+  "dataset": "FD003",
+  "partition": "iid",
+  "seed": 2024,
+  "train_engines": 100,
+  "test_engines": 100,
+  "client_engines": [
+    50,
+    50
+  ],
+  "client_train_groups": [
+    50,
+    50
+  ],
+  "client_test_engines": [
+    50,
+    50
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    9917,
+    11903
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 18.31951141357422,
+      "nasa": 1161.215087890625
+    },
+    "clients": [
+      {
+        "rmse": 17.468297958374023,
+        "nasa": 318.2981872558594
+      },
+      {
+        "rmse": 19.132890701293945,
+        "nasa": 842.9168701171875
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 21.531163163994528,
+      "nasa": 2786.691347845579
+    },
+    "clients": [
+      {
+        "rmse": 19.45985221862793,
+        "nasa": 990.0462036132812
+      },
+      {
+        "rmse": 23.419998168945312,
+        "nasa": 1796.6453857421875
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 21.533443450927734,
+      "nasa": 3052.890380859375
+    },
+    "clients": [
+      {
+        "rmse": 19.398174285888672,
+        "nasa": 840.0133056640625
+      },
+      {
+        "rmse": 23.47528648376465,
+        "nasa": 2212.876953125
+      }
+    ],
+    "round_seconds": [
+      3.3940939589811023,
+      3.3847157919954043,
+      3.5364053749945015,
+      3.3682067499903496,
+      3.3601304170151707
+    ]
+  }
+}

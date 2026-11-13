@@ -1,85 +1,78 @@
-# 🏭 FedPdM-Edge: Swarm Federated Predictive Maintenance for Industry 4.0
+# FedPdM-Edge
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
-[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-ee4c2c.svg)](https://pytorch.org/)
-[![Flower](https://img.shields.io/badge/Flower-FL-green.svg)](https://flower.ai/)
-[![Interreg Aurora](https://img.shields.io/badge/Project-ResilientEdge-003399.svg)](https://www.interregaurora.eu/)
+Research code for federated Remaining Useful Life (RUL) prediction on NASA C-MAPSS turbofan data. The repository includes a Flower deployment demo and a paired PyTorch experiment suite.
 
-**FedPdM-Edge** is a privacy-preserving, decentralized predictive maintenance framework developed for industrial manufacturing environments. Built under the **EU Interreg Aurora Project *ResilientEdge*** (Grant No. 20373282) by **Mid Sweden University** and the **University of Oulu**, it addresses the critical challenge of keeping raw machine telemetry strictly on-premise while collaboratively training robust Remaining Useful Life (RUL) regression models across distributed factory sites.
+## Scope and privacy
 
----
+In the Flower demo, clients train on local windows and send model parameters to the coordinator. The paired benchmark simulates client updates in one local process and does not measure a Flower network session. Keeping raw windows out of the parameter exchange does not prevent leakage from model updates. The checked-in implementation does **not** enable TLS/mTLS, encrypted weights, differential privacy, or secure aggregation. It makes no formal privacy guarantee. The scaler in the research runner is fitted on all training engines, so the preprocessing step is centralized.
 
-## 📌 Context & Problem Statement
+The evaluated datasets are FD001–FD004. Targets use the conventional 125-cycle cap and the official held-out test files. The NASA asymmetric score is reported alongside RMSE. See [results/EXPERIMENTS.md](results/EXPERIMENTS.md) for the exact runs, raw outputs, and unavailable hardware. Legacy FD001/FD002 files remain under `results/fd001/` and `results/fd002/`; they are not combined with the paired experiment suite.
 
-In Industry 4.0 manufacturing plants, operational machinery telemetry (turbomachinery vibration, temperatures, pressure, actuator states) represents guarded intellectual property and operational secrets. Streaming high-frequency sensor readings to third-party cloud lakes introduces severe data exfiltration risks and regulatory barriers. 
+## Experiments
 
-However, isolated plants frequently encounter data scarcity: rare catastrophic mechanical failures happen infrequently at a single facility, causing locally-trained models to overfit or miss degradation anomalies. 
+`experiments/reproduce.py` contains the shared preprocessing and training pipeline for:
 
-**FedPdM-Edge** solves this trade-off using **Swarm Intelligence and Federated Learning (Flower + PyTorch 1D-CNN)**:
-- **Local Training Data:** The checked-in clients train on local telemetry and exchange model parameters. TLS, secure aggregation, and differential privacy are not configured; model updates may leak information and transport is not claimed to be encrypted.
-- **Asymmetric Risk Optimization:** Evaluated against the exponential **NASA Asymmetric Scoring Function**, penalizing dangerous late failure predictions far more heavily than conservative early predictions.
-- **Physical Edge Viability:** Tested and benchmarked across physical ARM single-board clusters (Raspberry Pi 4) and heterogeneous edge servers.
+- Centralized, per-client local-only, and FedAvg baselines.
+- FedProx and FedAdam server optimization.
+- MSE versus an asymmetric NASA-score-aware loss, plus a small CNN-LSTM comparison.
+- Five paired seeds and IID, regime-grouped window (FD002/FD004), and engine-count-imbalanced partitions.
+- Global and client-shard RMSE/NASA score, and exact paired sign-flip tests in the summary CSV.
 
----
+For FD002/FD004, the regime split groups windows by the nearest of six operating-condition clusters at each window endpoint. A single engine can contribute windows to both clients, so this split tests regime shift rather than disjoint plant fleets.
 
-## 🏗️ Architecture
+The centralized/local/FedAvg baselines run on IID partitions for all four datasets. FedProx and FedAdam are added on the FD002/FD004 regime and engine-count-imbalanced partitions; the score-aware loss and CNN-LSTM are also compared on those regime partitions. This coverage is reflected in the summary rather than imputed across missing method/partition combinations.
 
-```mermaid
-flowchart TD
-    subgraph Tier1["Tier 1: Factory Edge Nodes (Physical Edge Clusters)"]
-        subgraph PlantA["Factory Plant A (e.g. RPi 4)"]
-            SensorsA["Machine Telemetry (17 Sensors)"] --> PrepA["Sliding Window (W=30)"]
-            PrepA --> ModelA["Local 1D-CNN Regressor"]
-        end
-        subgraph PlantB["Factory Plant B (e.g. RPi 4)"]
-            SensorsB["Machine Telemetry (17 Sensors)"] --> PrepB["Sliding Window (W=30)"]
-            PrepB --> ModelB["Local 1D-CNN Regressor"]
-        end
-    end
+## Measured results
 
-    Bus["Flower gRPC transport<br/>[Model parameters: w_i <==> Global Model: w]"]
+All entries below are mean ± sample standard deviation over five paired seeds. Lower is better for both RMSE and the NASA score. The NASA score is summed over each dataset's official test engines.
 
-    ModelA <-->|"Local Weights w_1"| Bus
-    ModelB <-->|"Local Weights w_2"| Bus
+| Dataset | Method | RMSE | NASA score |
+|---|---|---:|---:|
+| FD001 | Centralized | 14.85 ± 0.97 | 439.85 ± 139.24 |
+| FD001 | Local-only | 19.80 ± 0.83 | 1,334.44 ± 328.37 |
+| FD001 | FedAvg | 19.27 ± 1.14 | 1,063.17 ± 268.40 |
+| FD002 | Centralized | 22.12 ± 1.78 | 4,180.30 ± 2,858.02 |
+| FD002 | Local-only | 23.35 ± 0.41 | 5,283.19 ± 443.40 |
+| FD002 | FedAvg | 23.33 ± 0.24 | 4,179.66 ± 680.06 |
+| FD003 | Centralized | 18.00 ± 0.85 | 1,093.74 ± 311.96 |
+| FD003 | Local-only | 21.98 ± 0.30 | 3,368.98 ± 477.38 |
+| FD003 | FedAvg | 21.60 ± 0.55 | 2,959.02 ± 559.00 |
+| FD004 | Centralized | 23.91 ± 0.81 | 4,758.71 ± 1,169.51 |
+| FD004 | Local-only | 28.43 ± 1.49 | 15,523.43 ± 8,611.70 |
+| FD004 | FedAvg | 27.07 ± 0.56 | 8,059.20 ± 2,868.94 |
 
-    subgraph Tier2["Tier 2: Swarm Coordinator Hub (Edge Gateway / Server)"]
-        Bus <-->|"Global Model w"| Aggregator["Flower FedAvg Aggregator"]
-        Aggregator --> Evaluator["NASA Asymmetric Risk Evaluator"]
-        Evaluator --> Schedule["Predictive RUL Maintenance Schedule"]
-    end
+On the regime-grouped partitions, FD002 FedAvg reached 23.50 ± 0.63 RMSE / 4,425.37 ± 1,367.59 NASA score; FedProx reached 23.30 ± 0.48 / 4,581.90 ± 1,331.95. FD004 FedAvg reached 26.78 ± 0.20 / 7,654.82 ± 693.72; FedProx reached 26.88 ± 0.81 / 7,638.47 ± 1,490.37. FedAdam with the tested server learning rate degraded sharply (RMSE 78.23 on FD002 and 56.62 on FD004). The asymmetric objective reduced the mean NASA score relative to FedAvg in both datasets while increasing RMSE. With five seeds, the exact two-sided paired sign-flip test's minimum p-value is 0.0625; no tested comparison reached p < 0.05. Full partition, per-client, and algorithm tables are in [results/reproducible/summary.csv](results/reproducible/summary.csv).
+
+Install the versions used by the local run, then execute the full matrix:
+
+```bash
+python -m pip install -r experiments/requirements.txt
+python experiments/reproduce.py --data /path/to/CMAPSSData.zip
 ```
 
-### Component Breakdown
+The runner writes raw JSON per dataset/partition/seed and `summary.csv` under `results/reproducible/`. A smoke run is available with `--quick`; it is for pipeline validation and must not be presented as a five-seed result.
 
-| Component | Role | Function | Privacy Guarantee |
-| :--- | :--- | :--- | :--- |
-| **Plant Edge Node** | Raspberry Pi 4 / Edge Host | Runs local 1D-CNN training over sliding windows ($W=30$). | 100% On-Premise; raw data retained. |
-| **Data Scaler** | Preprocessor | Min-Max sensor normalization across operating regimes. | Standardized local representations. |
-| **1D-CNN Model** | PyTorch Regression Engine | 2 Conv1d layers + MaxPool1d + Fully Connected layers. | Low-latency inference on low-power ARM CPUs. |
-| **Federated Bus** | Flower gRPC | Exchanges model parameters; TLS, secure aggregation, and differential privacy are not configured in the checked-in client/server. | Raw training telemetry stays on clients; model-update leakage is not mitigated. |
-| **Coordinator Hub** | Swarm Hub (Flower) | Aggregates weights: $\mathbf{w}^{(t+1)} = \sum \frac{n_i}{N} \mathbf{w}_i^{(t)}$. | Global consensus model without centralization. |
-| **Risk Engine** | Production Evaluator | NASA asymmetric penalty metric ($S = \sum e^{\alpha \Delta} - 1$). | Exponential penalty for late failure predictions. |
+After running disjoint dataset groups in parallel or resuming a partial run, rebuild the aggregate summary with:
 
----
+```bash
+python experiments/reproduce.py --summarize-only
+```
 
-## 📊 Benchmark Results
+For Raspberry Pi profiling, run the following on each device with the same dataset and Python environment:
 
-Evaluated rigorously across multiple random seeds on the standard **NASA C-MAPSS** turbofan degradation benchmarks with official held-out test sets (`test_FD001.txt` and `test_FD002.txt`). Target Remaining Useful Life (RUL) is capped at 125 cycles following standard turbofan maintenance literature.
+```bash
+python experiments/profile_edge.py \
+  --data /path/to/CMAPSSData.zip --dataset FD002 \
+  --partition regime --client 0 --output results/edge/rpi_fd002.json
+```
 
-### 1. NASA C-MAPSS FD001 (Single Operating Condition)
-*Evaluated over 5 independent random seeds ($n=5$)*:
+The profiler records per-round CPU training time, peak process RSS, and the exact model-tensor payload for one downlink and one uplink. The byte count excludes gRPC framing and transport overhead. It does not imply that transport encryption is enabled.
 
-| Architecture | Model Privacy | Test RMSE (Cycles) | NASA Asymmetric Score |
-| :--- | :---: | :---: | :---: |
-| **Constant Baseline** | N/A | $40.46 \pm 0.00$ | $17{,}301.19 \pm 0.00$ |
-| **Isolated Local Edge** | 100% Local | $15.55 \pm 0.46$ | $464.43 \pm 74.67$ |
-| **FedAvg Swarm (FedPdM)** | **100% Local** | **$14.92 \pm 0.42$** | **$394.85 \pm 45.73$** |
-| *Centralized Upper Bound* | 0% (Exposed) | $14.75 \pm 0.69$ | $425.36 \pm 94.56$ |
+## Existing Flower demo
 
-> **Key Finding:** The federated swarm virtually matches the theoretical RMSE ceiling of centralized data pooling ($14.92$ vs $14.75$) while **outperforming centralized training on the NASA Risk Score** ($394.85$ vs $425.36$). The federated aggregation introduces implicit regularization that protects against local sensor overfitting.
+The root-level `server.py`, `client.py`, and `run_fd002_federated.sh` are the earlier Flower demo. Their configuration and archived results predate the paired runner. They are useful for deployment experiments but should not be used as the sole basis for the tables in a new study.
 
-### 2. NASA C-MAPSS FD002 (official test set, all 259 engines)
+### NASA C-MAPSS FD002 (official test set, all 259 engines)
 *5 seeds, mean ± std, 10 local epochs / 5 federated rounds x 2 epochs; measured, see `results/EXPERIMENTS.md`*:
 
 The underlying FD002 dataset contains six operating conditions, but the archived client partition provenance remains unresolved; see `docs/literature_review.md`. Do not interpret these results as an operating-condition partition until the assignments are recovered and recorded.
@@ -96,7 +89,7 @@ Per-node cost (physical, 2 local epochs/round): RPi1 ~12.8 s (16.7k windows), RP
 
 > The FD001 table above is from the pre-audit pipeline and was **not re-run** here.
 
-### 3. Asymmetric Risk-Aware Training Loss (`mse` vs. `asymmetric`)
+### Asymmetric Risk-Aware Training Loss (`mse` vs. `asymmetric`)
 To align local and federated optimization with the safety-critical NASA Asymmetric Scoring Function, `common.py` provides `AsymmetricRULLoss(alpha_late=2.5, alpha_early=0.5)` (selectable via `LOSS_FN=asymmetric` or `--loss-fn asymmetric` in `client.py`, `final_benchmark.py`, and `fed_sim.py`; default remains `mse`). It applies a $C^1$-smooth asymmetric quadratic penalty ($\alpha_{\text{late}} d^2$ for late predictions $d = \hat{y} - y \ge 0$ vs. $\alpha_{\text{early}} d^2$ for early predictions $d < 0$), avoiding the gradient explosion of raw exponential objectives.
 
 *Controlled 5-seed comparison (`42, 123, 456, 789, 1024`), 10 local epochs (FedAvg: 5 rounds × 2 epochs), recorded in `results/asymmetric_loss_comparison.json` (`benchmark_asymmetric_loss.py`):*
@@ -118,67 +111,27 @@ To align local and federated optimization with the safety-critical NASA Asymmetr
 
 > **Findings:** `AsymmetricRULLoss` consistently cuts the late-prediction rate roughly in half across all setups and datasets (from 40.8%–63.8% down to 20.5%–34.2%) and sharply reduces NASA Score mean and variance in decentralized settings (FD001 FedAvg: -46.6%, FD002 FedAvg: -38.0% with std dropping from 2,962.8 to 429.8). On FD002, this safety margin trades off higher symmetric RMSE (+10.8% to +27.9%) due to conservative early-prediction bias.
 
----
-
-## 📁 Repository Structure
+## Repository layout
 
 ```text
-FedPdM-Edge/
-├── client.py                 # Flower edge client running local training on plant data
-├── server.py                 # Flower federated server aggregating global model weights
-├── common.py                 # PyTorch 1D-CNN regressor, NASA scoring function, data loaders
-├── compute_global_scale.py   # Global min-max scaling across operating conditions
-├── final_benchmark.py        # Reproducible 4-way comparison (Constant, Local, FedAvg, Centralized)
-├── run_fd002_federated.sh    # Multi-client local/remote test runner
-├── setup_fd002.py            # Lifespan-sorted label-skew partition generator
-├── sanity_check.py           # Verification gate for model convergence and data pipelines
-├── plot_rul.py               # Generates RUL prediction vs ground truth curves
-├── deploy.sh                 # Rsync deployment script to Raspberry Pi edge nodes
-├── results/                  # Archived JSON result runs across seeds
-│   ├── fd001/                # Official FD001 physical & simulation runs
-│   └── fd002/                # Official FD002 heterogeneous operating condition runs
-└── PDM_FIXES.md              # Experimental audit log and resolution notes
+common.py                            Existing model, AsymmetricRULLoss, and C-MAPSS helpers
+client.py / server.py                Earlier Flower client/server demo
+fed_sim.py / final_benchmark.py      In-process Flower-parity simulation and 4-way benchmark
+benchmark_asymmetric_loss.py         Controlled 5-seed MSE vs. AsymmetricRULLoss benchmark
+compute_global_scale.py              Global min-max scaling across operating conditions
+run_fd002_federated.sh               Multi-client local/remote test runner
+sanity_check.py                      Verification gate for model convergence and data pipelines
+experiments/reproduce.py             Paired FD001–FD004 experiments
+experiments/profile_edge.py          Edge training/RSS/payload profiler
+docs/literature_review.md            Literature review and FD002 partition audit notes
+results/                             Raw results, asymmetric loss comparison, and experiment log
+paper/                               Manuscript source and generated tables
 ```
 
----
+## Paper
 
-## 🚀 Quickstart
+Build from `paper/` with `make`. `python paper/make_figures.py` generates manuscript tables from `results/reproducible/summary.csv`; only completed raw runs should appear in that file.
 
-### Prerequisites
-- Python 3.10+
-- PyTorch 2.0+
-- Flower (`flwr`): `pip install flwr torch pandas numpy scikit-learn`
-- NASA CMAPSS dataset (`CMAPSSData.zip` placed in home or data directory)
+## Project
 
-### 1. Verification & Sanity Check
-Run the sanity verification to validate data loading, tensor windowing, and regression logic:
-```bash
-python sanity_check.py
-```
-
-### 2. Run Comprehensive Benchmark
-Reproduce the 4-way comparative study across random seeds:
-```bash
-python final_benchmark.py
-```
-
-### 3. Launch Federated Swarm
-Start the central aggregation server:
-```bash
-python server.py --rounds 10 --min-clients 2
-```
-
-In separate terminals (or remote edge nodes):
-```bash
-python client.py --client-id 1 --data-partition partition.json
-python client.py --client-id 2 --data-partition partition.json
-```
-
----
-
-## 🤝 Citation & Attribution
-
-This software is developed within the Interreg Aurora Project **ResilientEdge** (2026).
-- **Authors:** Alessandro De Martini, Stefan Forsström (Mid Sweden University)
-- **Partners:** Mid Sweden University (Sundsvall, Sweden), University of Oulu (Oulu, Finland)
-- **Grant:** Interreg Aurora 20373282
+Developed within the EU Interreg Aurora project ResilientEdge (grant 20373282), with Mid Sweden University and the University of Oulu.

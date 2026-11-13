@@ -1,0 +1,101 @@
+{
+  "dataset": "FD002",
+  "partition": "iid",
+  "seed": 100,
+  "train_engines": 260,
+  "test_engines": 253,
+  "client_engines": [
+    130,
+    130
+  ],
+  "client_train_groups": [
+    130,
+    130
+  ],
+  "client_test_engines": [
+    127,
+    126
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    22365,
+    23854
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 23.26865005493164,
+      "nasa": 2827.103515625
+    },
+    "clients": [
+      {
+        "rmse": 20.976341247558594,
+        "nasa": 893.1846923828125
+      },
+      {
+        "rmse": 25.37041473388672,
+        "nasa": 1933.918701171875
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 23.766821192908917,
+      "nasa": 5335.796450085791
+    },
+    "clients": [
+      {
+        "rmse": 21.367494583129883,
+        "nasa": 1345.658203125
+      },
+      {
+        "rmse": 25.96176528930664,
+        "nasa": 3990.137939453125
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.62268829345703,
+      "nasa": 5254.73193359375
+    },
+    "clients": [
+      {
+        "rmse": 21.241619110107422,
+        "nasa": 1747.547607421875
+      },
+      {
+        "rmse": 25.80124282836914,
+        "nasa": 3507.184326171875
+      }
+    ],
+    "round_seconds": [
+      6.754131875000894,
+      6.715800083999056,
+      6.733659958001226,
+      6.727994832996046,
+      6.75291508299415
+    ]
+  }
+}

@@ -1,0 +1,101 @@
+{
+  "dataset": "FD004",
+  "partition": "iid",
+  "seed": 42,
+  "train_engines": 249,
+  "test_engines": 237,
+  "client_engines": [
+    125,
+    124
+  ],
+  "client_train_groups": [
+    125,
+    124
+  ],
+  "client_test_engines": [
+    119,
+    118
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    27369,
+    26659
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 24.880367279052734,
+      "nasa": 6066.2998046875
+    },
+    "clients": [
+      {
+        "rmse": 24.33159637451172,
+        "nasa": 2559.450927734375
+      },
+      {
+        "rmse": 25.421794891357422,
+        "nasa": 3506.848876953125
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 28.674657704670715,
+      "nasa": 15950.248176305746
+    },
+    "clients": [
+      {
+        "rmse": 31.246307373046875,
+        "nasa": 13689.3125
+      },
+      {
+        "rmse": 25.823139190673828,
+        "nasa": 2260.936279296875
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 27.902631759643555,
+      "nasa": 9264.69140625
+    },
+    "clients": [
+      {
+        "rmse": 28.123441696166992,
+        "nasa": 5085.1455078125
+      },
+      {
+        "rmse": 27.67816734313965,
+        "nasa": 4179.5439453125
+      }
+    ],
+    "round_seconds": [
+      8.606800584006123,
+      8.722804917022586,
+      11.006803500000387,
+      11.834433917014394,
+      9.060732874990208
+    ]
+  }
+}

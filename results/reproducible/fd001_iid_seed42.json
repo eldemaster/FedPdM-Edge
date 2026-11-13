@@ -1,0 +1,102 @@
+{
+  "dataset": "FD001",
+  "partition": "iid",
+  "seed": 42,
+  "train_engines": 100,
+  "test_engines": 100,
+  "client_engines": [
+    50,
+    50
+  ],
+  "client_train_groups": [
+    50,
+    50
+  ],
+  "client_test_engines": [
+    50,
+    50
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    8976,
+    8755
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "short_test_windows": "left-pad with first observed row to include every official test engine",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 13.936887741088867,
+      "nasa": 326.9485168457031
+    },
+    "clients": [
+      {
+        "rmse": 15.64555549621582,
+        "nasa": 229.1056365966797
+      },
+      {
+        "rmse": 11.987086296081543,
+        "nasa": 97.84288787841797
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 20.732086319454275,
+      "nasa": 1691.102462607479
+    },
+    "clients": [
+      {
+        "rmse": 23.80746078491211,
+        "nasa": 1354.99365234375
+      },
+      {
+        "rmse": 17.112672805786133,
+        "nasa": 336.1087341308594
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 19.675180435180664,
+      "nasa": 1233.0853271484375
+    },
+    "clients": [
+      {
+        "rmse": 22.800613403320312,
+        "nasa": 980.11669921875
+      },
+      {
+        "rmse": 15.948591232299805,
+        "nasa": 252.9684600830078
+      }
+    ],
+    "round_seconds": [
+      2.8728058749984484,
+      2.816065958002582,
+      2.768723291985225,
+      2.6768570420099422,
+      2.7475982079922687
+    ]
+  }
+}
