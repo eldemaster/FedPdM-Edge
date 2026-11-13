@@ -1,0 +1,102 @@
+{
+  "dataset": "FD002",
+  "partition": "iid",
+  "seed": 7,
+  "train_engines": 260,
+  "test_engines": 259,
+  "client_engines": [
+    130,
+    130
+  ],
+  "client_train_groups": [
+    130,
+    130
+  ],
+  "client_test_engines": [
+    130,
+    129
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    22365,
+    23854
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "short_test_windows": "left-pad with first observed row to include every official test engine",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 20.805448532104492,
+      "nasa": 3086.875732421875
+    },
+    "clients": [
+      {
+        "rmse": 19.915010452270508,
+        "nasa": 1374.8558349609375
+      },
+      {
+        "rmse": 21.66579818725586,
+        "nasa": 1712.019775390625
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 23.74535748660556,
+      "nasa": 5452.113713177438
+    },
+    "clients": [
+      {
+        "rmse": 23.456066131591797,
+        "nasa": 2694.4794921875
+      },
+      {
+        "rmse": 24.033369064331055,
+        "nasa": 2757.63427734375
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.582584381103516,
+      "nasa": 4310.240234375
+    },
+    "clients": [
+      {
+        "rmse": 23.317304611206055,
+        "nasa": 2200.69580078125
+      },
+      {
+        "rmse": 23.84693717956543,
+        "nasa": 2109.54443359375
+      }
+    ],
+    "round_seconds": [
+      7.359631624975009,
+      7.303004541026894,
+      7.389727084024344,
+      7.385471542016603,
+      7.434612042008666
+    ]
+  }
+}

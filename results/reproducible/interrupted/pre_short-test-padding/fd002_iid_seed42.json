@@ -1,0 +1,101 @@
+{
+  "dataset": "FD002",
+  "partition": "iid",
+  "seed": 42,
+  "train_engines": 260,
+  "test_engines": 253,
+  "client_engines": [
+    130,
+    130
+  ],
+  "client_train_groups": [
+    130,
+    130
+  ],
+  "client_test_engines": [
+    127,
+    126
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    22365,
+    23854
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 22.368383407592773,
+      "nasa": 2751.48681640625
+    },
+    "clients": [
+      {
+        "rmse": 19.848161697387695,
+        "nasa": 897.8028564453125
+      },
+      {
+        "rmse": 24.64922332763672,
+        "nasa": 1853.6839599609375
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 23.179815961663817,
+      "nasa": 5055.137513086088
+    },
+    "clients": [
+      {
+        "rmse": 21.71101188659668,
+        "nasa": 1908.00048828125
+      },
+      {
+        "rmse": 24.57158851623535,
+        "nasa": 3147.13671875
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.157733917236328,
+      "nasa": 3802.424560546875
+    },
+    "clients": [
+      {
+        "rmse": 20.720767974853516,
+        "nasa": 1271.335205078125
+      },
+      {
+        "rmse": 25.378328323364258,
+        "nasa": 2531.089599609375
+      }
+    ],
+    "round_seconds": [
+      8.257583375001559,
+      7.091433333000168,
+      6.854525750008179,
+      8.212112667009933,
+      7.6584620840149
+    ]
+  }
+}

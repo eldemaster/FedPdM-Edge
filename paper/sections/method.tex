@@ -4,14 +4,16 @@
 For an engine at cycle $t$, input $\mathbf{X}_t\in\mathbb{R}^{W\times d}$ stacks the last $W{=}30$ cycles of $d{=}17$ channels (three operating settings and 14 sensors, min--max scaled with global statistics). The model $f_{\mathbf{w}}$ regresses the RUL $y_t=\min(R_{\max},\,T-t)$ with $R_{\max}=125$ (piece-wise linear target) and $T$ the engine's failure cycle.
 
 \subsection{1D-CNN regressor}
-The network (22\,273 parameters) is: Conv1d(17$\to$32, $k{=}3$)--ReLU--MaxPool(2); Conv1d(32$\to$64, $k{=}3$)--ReLU--MaxPool(2); flatten (448); Linear(448$\to$32)--ReLU; Linear(32$\to$1). A full model is about 89\,kB in float32, so one round costs roughly 178\,kB per client (up plus down) before protocol overhead. This is derived from the architecture, not measured.
+The network (22\,273 parameters) is: Conv1d(17$\to$32, $k{=}3$)--ReLU--MaxPool(2); Conv1d(32$\to$64, $k{=}3$)--ReLU--MaxPool(2); flatten (448); Linear(448$\to$32)--ReLU; Linear(32$\to$1). The float32 model is 89\,092 bytes; one downlink plus one uplink is 178\,184 tensor bytes per round, excluding protocol overhead. These are architecture-derived payload sizes; the Pi profiler records measured process RSS and training time.
 
 \subsection{Federated averaging}
 With $K$ clients holding $n_k$ windows ($N=\sum_k n_k$), round $t$ proceeds: the server sends $\mathbf{w}^{(t)}$; each client runs $E$ local epochs of Adam on its data minimising MSE, giving $\mathbf{w}_k^{(t+1)}$; the server aggregates
 \begin{equation}
 \mathbf{w}^{(t+1)}=\sum_{k=1}^{K}\frac{n_k}{N}\,\mathbf{w}_k^{(t+1)}.
 \end{equation}
-\todo{FedProx variant: add objective $F_k(\mathbf{w})+\frac{\mu}{2}\lVert\mathbf{w}-\mathbf{w}^{(t)}\rVert^2$ once run}
+FedProx adds $\frac{\mu}{2}\lVert\mathbf{w}-\mathbf{w}^{(t)}\rVert_2^2$ to each client's local objective, with $\mu=0.01$. The FedAdam server uses the pseudo-gradient $\mathbf{g}_t=\mathbf{w}^{(t)}-\sum_k(n_k/N)\mathbf{w}_k^{(t+1)}$, Adam moments $(\beta_1,\beta_2)=(0.9,0.99)$, and server step size $0.01$.
+
+The asymmetric training-loss ablation averages the same exponential penalty used by the NASA metric over each batch. To bound gradients, the exponent is capped at 20 during training; evaluation uses the uncapped NASA score. The CNN-LSTM ablation uses a 16-channel convolution, max pooling and a 24-unit LSTM head (4\,889 parameters); it is trained centrally against the 1D-CNN centralized baseline.
 
 \subsection{Evaluation metrics}
 With $\Delta_i=\hat y_i-y_i$ (positive = late prediction), RMSE is $\sqrt{\frac1M\sum_i\Delta_i^2}$ and the NASA score~\cite{saxena2008damage} is

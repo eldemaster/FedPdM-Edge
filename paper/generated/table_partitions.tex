@@ -1,0 +1,20 @@
+\begin{tabular}{lllrrr}
+\toprule
+Dataset & Partition & Method & $n$ & RMSE & NASA score \\
+\midrule
+FD002 & iid & fedavg & 5 & $23.33\pm0.24$ & $4\,179.66\pm680.06$ \\
+FD002 & regime & fedavg & 5 & $23.50\pm0.63$ & $4\,425.37\pm1\,367.59$ \\
+FD002 & regime & fedprox & 5 & $23.30\pm0.48$ & $4\,581.90\pm1\,331.95$ \\
+FD002 & regime & fedadam & 5 & $78.23\pm23.17$ & $328\,950\,600.23\pm699\,140\,126.97$ \\
+FD002 & engine\_imbalance & fedavg & 5 & $22.36\pm0.39$ & $4\,073.82\pm970.12$ \\
+FD002 & engine\_imbalance & fedprox & 5 & $22.30\pm0.82$ & $4\,170.31\pm1\,185.30$ \\
+FD002 & engine\_imbalance & fedadam & 5 & $59.37\pm16.21$ & $10\,521\,602.78\pm20\,759\,533.05$ \\
+FD004 & iid & fedavg & 5 & $27.07\pm0.56$ & $8\,059.20\pm2\,868.94$ \\
+FD004 & regime & fedavg & 5 & $26.78\pm0.20$ & $7\,654.82\pm693.72$ \\
+FD004 & regime & fedprox & 5 & $26.88\pm0.81$ & $7\,638.47\pm1\,490.37$ \\
+FD004 & regime & fedadam & 5 & $56.62\pm16.01$ & $8\,996\,132.47\pm18\,447\,615.59$ \\
+FD004 & engine\_imbalance & fedavg & 5 & $26.55\pm0.73$ & $8\,205.18\pm4\,119.58$ \\
+FD004 & engine\_imbalance & fedprox & 5 & $26.33\pm0.77$ & $7\,748.58\pm3\,981.96$ \\
+FD004 & engine\_imbalance & fedadam & 5 & $49.66\pm12.60$ & $2\,137\,084.85\pm4\,493\,691.96$ \\
+\bottomrule
+\end{tabular}

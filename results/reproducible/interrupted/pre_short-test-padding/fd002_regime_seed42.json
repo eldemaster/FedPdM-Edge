@@ -1,0 +1,201 @@
+{
+  "dataset": "FD002",
+  "partition": "regime",
+  "seed": 42,
+  "train_engines": 260,
+  "test_engines": 253,
+  "client_engines": [
+    260,
+    260
+  ],
+  "client_train_groups": [
+    780,
+    780
+  ],
+  "client_test_engines": [
+    111,
+    142
+  ],
+  "client_engine_overlap": 260,
+  "client_training_windows": [
+    20840,
+    25379
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 23.6217098236084,
+      "nasa": 9113.8583984375
+    },
+    "clients": [
+      {
+        "rmse": 23.640775680541992,
+        "nasa": 3313.69580078125
+      },
+      {
+        "rmse": 23.60679817199707,
+        "nasa": 5800.16259765625
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 22.682920912409617,
+      "nasa": 4268.951380921845
+    },
+    "clients": [
+      {
+        "rmse": 23.277164459228516,
+        "nasa": 1332.90673828125
+      },
+      {
+        "rmse": 22.20733642578125,
+        "nasa": 2936.04541015625
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.280580520629883,
+      "nasa": 4683.41162109375
+    },
+    "clients": [
+      {
+        "rmse": 23.21511459350586,
+        "nasa": 1603.7645263671875
+      },
+      {
+        "rmse": 23.33162498474121,
+        "nasa": 3079.646728515625
+      }
+    ],
+    "round_seconds": [
+      7.180099374993006,
+      7.088061999995261,
+      6.953059249994112,
+      7.633642708009575,
+      7.040019749983912
+    ]
+  },
+  "fedprox": {
+    "global": {
+      "rmse": 23.03631019592285,
+      "nasa": 4838.033203125
+    },
+    "clients": [
+      {
+        "rmse": 22.877939224243164,
+        "nasa": 1592.6209716796875
+      },
+      {
+        "rmse": 23.159351348876953,
+        "nasa": 3245.411865234375
+      }
+    ],
+    "round_seconds": [
+      7.026549792004516,
+      7.171954124991316,
+      7.0481726660218555,
+      7.137432541989256,
+      7.613595624978188
+    ]
+  },
+  "fedadam": {
+    "global": {
+      "rmse": 85.9083480834961,
+      "nasa": 51085136.0
+    },
+    "clients": [
+      {
+        "rmse": 84.31421661376953,
+        "nasa": 20162458.0
+      },
+      {
+        "rmse": 87.13414764404297,
+        "nasa": 30922680.0
+      }
+    ],
+    "round_seconds": [
+      7.391717041988159,
+      6.956791459000669,
+      8.156099832995096,
+      7.0658684999798425,
+      7.0567342919821385
+    ]
+  },
+  "federated_asymmetric": {
+    "global": {
+      "rmse": 27.400070190429688,
+      "nasa": 3885.87744140625
+    },
+    "clients": [
+      {
+        "rmse": 27.041418075561523,
+        "nasa": 1505.8604736328125
+      },
+      {
+        "rmse": 27.67718505859375,
+        "nasa": 2380.01708984375
+      }
+    ],
+    "round_seconds": [
+      7.196190290997038,
+      7.218676749995211,
+      7.179310916020768,
+      7.277150707988767,
+      7.234273415990174
+    ]
+  },
+  "asymmetric": {
+    "global": {
+      "rmse": 25.35953140258789,
+      "nasa": 3418.5458984375
+    },
+    "clients": [
+      {
+        "rmse": 25.228422164916992,
+        "nasa": 1360.853271484375
+      },
+      {
+        "rmse": 25.4615478515625,
+        "nasa": 2057.692626953125
+      }
+    ],
+    "round_seconds": []
+  },
+  "cnn_lstm": {
+    "global": {
+      "rmse": 42.861961364746094,
+      "nasa": 25010.005859375
+    },
+    "clients": [
+      {
+        "rmse": 41.420921325683594,
+        "nasa": 10194.923828125
+      },
+      {
+        "rmse": 43.95552444458008,
+        "nasa": 14815.0810546875
+      }
+    ],
+    "round_seconds": []
+  }
+}

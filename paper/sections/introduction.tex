@@ -1,15 +1,10 @@
 \section{Introduction}
 \label{sec:intro}
-Condition monitoring in manufacturing produces high-rate telemetry (temperatures, pressures, vibration, actuator states) that encodes process know-how and is treated as proprietary. Shipping it to a third-party cloud raises exfiltration and regulatory concerns, while keeping it local starves each plant of failure examples: catastrophic degradation is rare at any single site, so locally trained prognostic models overfit or miss late-life behaviour.
 
-Federated learning (FL)~\cite{mcmahan2017fedavg} offers a middle path: sites train locally and share only parameters. Most FL studies are simulated on a single workstation, however, and say little about whether the approach holds on the low-power ARM hardware that sits next to machines. A second gap is evaluation: RUL errors are not symmetric, since a late prediction can cause an unplanned failure while an early one only costs some useful life. The standard NASA score~\cite{saxena2008damage} encodes this, yet is often omitted next to RMSE.
+Predictive maintenance models use machine telemetry to estimate the Remaining Useful Life (RUL) of equipment. Telemetry can be operationally sensitive, while individual sites may have limited examples of degradation and failure. Federated learning (FL) lets clients train on local data and share model updates with a coordinator~\cite{mcmahan2017fedavg}. It changes the data flow, but shared updates can still reveal information and need not be treated as a privacy guarantee.
 
-This paper studies federated RUL regression end to end on physical edge nodes. Our contributions are:
-\begin{itemize}
-\item a federated PdM pipeline (Flower, PyTorch 1D-CNN) deployed on Raspberry Pi 4 clients with a coordinator server, with data-parity-checked comparison against constant, local-only and centralised baselines;
-\item an evaluation on the official C-MAPSS FD001 and FD002 test sets, five seeds, reporting both RMSE and the asymmetric NASA score;
-\item evidence that the benefit of federation depends on heterogeneity: on FD001 the clients are near-IID and federated training is on par with centralised, whereas on FD002 it clearly beats isolated training.
-\end{itemize}
-\todo{Add research questions / outline paragraph once the experimental scope (FedProx, round sweep, edge cost) is fixed}
+RUL evaluation also needs metrics that reflect asymmetric maintenance costs. A late prediction may defer service beyond the actual failure point, while an early prediction may consume useful life. The NASA C-MAPSS scoring function penalizes late errors more heavily than early errors~\cite{saxena2008damage}; reporting RMSE alone can therefore hide relevant differences.
+
+This study asks: (1) how do centralized, local-only and FedAvg models compare under matched preprocessing and seeds; (2) how do client partition and aggregation method affect global and per-client RUL accuracy; and (3) what local training time, memory and parameter payload does a compact model require on edge hardware? We specify a paired FD001--FD004 benchmark with FedProx, FedAdam, an asymmetric loss and a compact CNN-LSTM ablation. The edge profiler records measurements when run on Raspberry Pi clients. The current manuscript reports only measurements present in the raw results and does not claim encrypted transport or formal privacy.
 
 The remainder is organised as follows: Section~\ref{sec:related} reviews related work, Section~\ref{sec:arch} the architecture, Section~\ref{sec:method} the method, Section~\ref{sec:setup} the setup, Section~\ref{sec:results} the results, Section~\ref{sec:discussion} limitations, and Section~\ref{sec:conclusion} concludes.

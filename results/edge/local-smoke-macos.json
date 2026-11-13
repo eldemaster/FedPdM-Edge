@@ -1,0 +1,25 @@
+{
+  "device": "local-apple-silicon",
+  "system": "macOS-27.0.1-arm64-arm-64bit-Mach-O",
+  "processor": "arm",
+  "python": "3.13.2",
+  "pytorch": "2.15.0",
+  "dataset": "FD002",
+  "partition": "regime",
+  "client": 0,
+  "client_engines": 260,
+  "training_windows": 20840,
+  "rounds": 1,
+  "local_epochs": 1,
+  "model": "CNN",
+  "train_seconds_per_round": [
+    3.646418416989036
+  ],
+  "train_seconds_mean": 3.646418416989036,
+  "train_seconds_std": 0.0,
+  "peak_process_rss_bytes": 426196992,
+  "model_tensor_bytes": 89092,
+  "communication_tensor_payload_bytes_per_round": 178184,
+  "communication_definition": "model parameters downlink plus updated parameters uplink; excludes gRPC/TLS framing; payload is measured from tensor dtypes/shapes",
+  "mTLS": false
+}
