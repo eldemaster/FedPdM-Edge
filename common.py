@@ -1,3 +1,4 @@
+import os
 import pandas as pd
 import numpy as np
 import random
@@ -13,12 +14,23 @@ def set_seed(seed=42):
     np.random.seed(seed)
     random.seed(seed)
     torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+
+def cmapss_zip_path():
+    """Locate CMAPSSData.zip: $CMAPSS_ZIP, then ./, ~/ (no hard-coded user path)."""
+    cands = [os.environ.get("CMAPSS_ZIP"), "CMAPSSData.zip",
+             os.path.expanduser("~/CMAPSSData.zip")]
+    for c in cands:
+        if c and os.path.isfile(c):
+            return c
+    raise FileNotFoundError("CMAPSSData.zip not found; set CMAPSS_ZIP=/path/to/CMAPSSData.zip")
 
 def load_cmapss_raw(filename):
     import zipfile
     cols = ['unit', 'cycle', 'setting1', 'setting2', 'setting3'] + [f's{i}' for i in range(1, 22)]
     usecols = [i for i in range(26)]
-    with zipfile.ZipFile('/home/eldemaster/CMAPSSData.zip', 'r') as z:
+    with zipfile.ZipFile(cmapss_zip_path(), 'r') as z:
         with z.open(filename) as f:
             df = pd.read_csv(f, sep=r'\s+', header=None, usecols=usecols, names=cols)
     return df
@@ -61,17 +73,104 @@ def extract_supervised_sequences(df_group):
 def extract_last_sequence(df_group, true_rul):
     data = df_group[USEFUL_SENSORS].values
     if len(data) < SEQ_LEN:
-        return None, None
+        # Short test engines used to be silently dropped (biasing the metric to 
+        # longer-lived engines). Left-pad by repeating the first reading instead.
+        pad = np.repeat(data[:1], SEQ_LEN - len(data), axis=0)
+        data = np.concatenate([pad, data], axis=0)
     seq = data[-SEQ_LEN:]
     rul = min(MAX_RUL, true_rul)
     return seq, rul
 
 def nasa_score(y_true, y_pred):
-    d = y_pred - y_true
-    score = 0
-    for diff in d:
-        if diff < 0:
-            score += np.exp(-diff / 13.0) - 1
-        else:
-            score += np.exp(diff / 10.0) - 1
-    return score
+    d = np.asarray(y_pred, dtype=np.float64) - np.asarray(y_true, dtype=np.float64)
+    return float(np.sum(np.where(d < 0, np.exp(-d / 13.0), np.exp(d / 10.0)) - 1))
+
+
+def load_rul(filename):
+    import zipfile
+    with zipfile.ZipFile(cmapss_zip_path(), 'r') as z:
+        with z.open(filename) as f:
+            return pd.read_csv(f, header=None).values.flatten()
+
+
+def apply_scale(df, scales):
+    mn = pd.Series(scales['min']); mx = pd.Series(scales['max'])
+    df = df.copy()
+    df[USEFUL_SENSORS] = (df[USEFUL_SENSORS] - mn) / (mx - mn + 1e-7)
+    return df
+
+
+def build_test_set(scales, subset='FD002'):
+    """Official test set: last window of every engine (all engines, short ones padded)."""
+    df = apply_scale(load_cmapss_raw(f'test_{subset}.txt'), scales)
+    ruls = load_rul(f'RUL_{subset}.txt')
+    X, y = [], []
+    for u, g in df.groupby('unit'):
+        x, r = extract_last_sequence(g, ruls[int(u) - 1])
+        X.append(x); y.append(r)
+    return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
+
+
+# ---------------------------------------------------------------- shared training
+import json
+from torch.utils.data import DataLoader, TensorDataset
+
+
+def load_scales(path='global_scale.json'):
+    with open(path) as f:
+        return json.load(f)
+
+
+def load_partition(path='partition.json'):
+    with open(path) as f:
+        return {k: [int(u) for u in v] for k, v in json.load(f).items()}
+
+
+def make_xy(df_scaled, units):
+    X, y = [], []
+    for u, g in df_scaled[df_scaled['unit'].isin(units)].groupby('unit'):
+        xs, ys = extract_supervised_sequences(g)
+        X.extend(xs); y.extend(ys)
+    return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
+
+
+def make_loader(X, y, batch_size=64, seed=0, shuffle=True):
+    g = torch.Generator(); g.manual_seed(seed)
+    return DataLoader(TensorDataset(torch.tensor(X), torch.tensor(y)),
+                      batch_size=batch_size, shuffle=shuffle, generator=g)
+
+
+def split_units(units, val_frac=0.1, seed=0):
+    """Unit-level (not window-level) split so val windows never share an engine with train."""
+    rng = np.random.RandomState(seed)
+    u = np.array(sorted(units)); rng.shuffle(u)
+    k = max(1, int(round(len(u) * val_frac)))
+    return [int(x) for x in u[k:]], [int(x) for x in u[:k]]
+
+
+def train_epochs(model, loader, epochs, lr=1e-3, mu=0.0, global_params=None, optimizer=None):
+    """Local training. mu>0 adds the FedProx term mu/2*||w - w_global||^2."""
+    opt = optimizer or torch.optim.Adam(model.parameters(), lr=lr)
+    crit = nn.MSELoss()
+    model.train()
+    if mu > 0:
+        ref = [p.detach().clone() for p in global_params]
+    for _ in range(epochs):
+        for bx, by in loader:
+            opt.zero_grad()
+            loss = crit(model(bx), by)
+            if mu > 0:
+                loss = loss + 0.5 * mu * sum(((p - r) ** 2).sum() for p, r in zip(model.parameters(), ref))
+            loss.backward()
+            opt.step()
+    return model
+
+
+def predict(model, X):
+    model.eval()
+    with torch.no_grad():
+        return model(torch.as_tensor(X)).numpy()
+
+
+def rmse(y, p):
+    return float(np.sqrt(np.mean((np.asarray(y) - np.asarray(p)) ** 2)))
