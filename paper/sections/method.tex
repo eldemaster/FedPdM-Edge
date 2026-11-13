@@ -13,10 +13,11 @@ With $K$ clients holding $n_k$ windows ($N=\sum_k n_k$), round $t$ proceeds: the
 \end{equation}
 FedProx adds $\frac{\mu}{2}\lVert\mathbf{w}-\mathbf{w}^{(t)}\rVert_2^2$ to each client's local objective, with $\mu=0.01$. The FedAdam server uses the pseudo-gradient $\mathbf{g}_t=\mathbf{w}^{(t)}-\sum_k(n_k/N)\mathbf{w}_k^{(t+1)}$, Adam moments $(\beta_1,\beta_2)=(0.9,0.99)$, and server step size $0.01$.
 
-The asymmetric training-loss ablation averages the same exponential penalty used by the NASA metric over each batch. To bound gradients, the exponent is capped at 20 during training; evaluation uses the uncapped NASA score. The CNN-LSTM ablation uses a 16-channel convolution, max pooling and a 24-unit LSTM head (4\,889 parameters); it is trained centrally against the 1D-CNN centralized baseline.
+\subsection{Paired-suite ablations}
+The paired FD001--FD004 suite's score-aware ablation averages the same exponential penalty used by the NASA metric over each batch. To bound gradients, the exponent is capped at 20 during training; evaluation uses the uncapped NASA score. We label its centralized and federated variants ``Central + exp.'' and ``FedAvg + exp.'' in the generated tables. The CNN-LSTM ablation uses a 16-channel convolution, max pooling and a 24-unit LSTM head (4\,889 parameters); it is trained centrally against the 1D-CNN centralized baseline.
 
-\subsection{Asymmetric risk-aware training loss}
-To align local and federated optimization with the safety-critical NASA Asymmetric Scoring Function without the gradient explosion of raw exponential objectives (whose gradients grow as $\exp(|d|/10)$ on large early-training errors), \texttt{common.py} provides \texttt{AsymmetricRULLoss} (selectable via \texttt{LOSS\_FN=asymmetric} or \texttt{--loss-fn asymmetric} in \texttt{client.py}, \texttt{final\_benchmark.py}, and \texttt{fed\_sim.py}; default remains \texttt{mse}). For prediction residual $d = \hat{y} - y$, it applies a $C^1$-smooth asymmetric quadratic penalty:
+\subsection{Quadratic asymmetric risk-aware loss}
+The separate controlled FD001/FD002 comparison uses \texttt{AsymmetricRULLoss} to avoid the exponential objective's worst-case gradient growth. The loss is selectable via \texttt{LOSS\_FN=asymmetric} or \texttt{--loss-fn asymmetric} in \texttt{client.py}, \texttt{final\_benchmark.py}, and \texttt{fed\_sim.py}; the default remains \texttt{mse}. For prediction residual $d = \hat{y} - y$, it applies a $C^1$-smooth asymmetric quadratic penalty:
 \begin{equation}
 \mathcal{L}_{\text{asym}}(d) = \begin{cases}
 \alpha_{\text{late}}\,d^2, & d \ge 0 \quad (\text{late prediction: }\hat{y} \ge y),\\
