@@ -96,6 +96,28 @@ Per-node cost (physical, 2 local epochs/round): RPi1 ~12.8 s (16.7k windows), RP
 
 > The FD001 table above is from the pre-audit pipeline and was **not re-run** here.
 
+### 3. Asymmetric Risk-Aware Training Loss (`mse` vs. `asymmetric`)
+To align local and federated optimization with the safety-critical NASA Asymmetric Scoring Function, `common.py` provides `AsymmetricRULLoss(alpha_late=2.5, alpha_early=0.5)` (selectable via `LOSS_FN=asymmetric` or `--loss-fn asymmetric` in `client.py`, `final_benchmark.py`, and `fed_sim.py`; default remains `mse`). It applies a $C^1$-smooth asymmetric quadratic penalty ($\alpha_{\text{late}} d^2$ for late predictions $d = \hat{y} - y \ge 0$ vs. $\alpha_{\text{early}} d^2$ for early predictions $d < 0$), avoiding the gradient explosion of raw exponential objectives.
+
+*Controlled 5-seed comparison (`42, 123, 456, 789, 1024`), 10 local epochs (FedAvg: 5 rounds × 2 epochs), recorded in `results/asymmetric_loss_comparison.json` (`benchmark_asymmetric_loss.py`):*
+
+| Dataset | Setup | Loss | Test RMSE (Cycles) | NASA Score | Late-Prediction Rate ($\hat{y} > y$) |
+| :--- | :--- | :--- | :---: | :---: | :---: |
+| **FD001** (100 engines) | Isolated Local | `mse` | 17.58 ± 1.01 | 722.9 ± 120.5 | 56.2% ± 6.6% |
+| **FD001** (100 engines) | Isolated Local | `asymmetric` | **17.15 ± 1.50** | **435.0 ± 85.6** (-39.8%) | **33.8% ± 4.5%** |
+| **FD001** (100 engines) | FedAvg (5r × 2e) | `mse` | 16.98 ± 1.31 | 690.8 ± 173.4 | 63.8% ± 7.1% |
+| **FD001** (100 engines) | FedAvg (5r × 2e) | `asymmetric` | **16.25 ± 1.23** | **369.1 ± 43.5** (-46.6%) | **34.2% ± 8.0%** |
+| **FD001** (100 engines) | Centralized (10e) | `mse` | **15.16 ± 0.86** | 450.4 ± 91.8 | 56.6% ± 3.3% |
+| **FD001** (100 engines) | Centralized (10e) | `asymmetric` | 15.80 ± 0.97 | **338.7 ± 52.0** (-24.8%) | **30.8% ± 5.2%** |
+| **FD002** (259 engines) | Isolated Local | `mse` | **23.73 ± 1.22** | 7,610.8 ± 3,611.4 | 50.3% ± 7.8% |
+| **FD002** (259 engines) | Isolated Local | `asymmetric` | 26.30 ± 2.08 | **3,932.2 ± 829.7** (-48.3%) | **29.5% ± 6.0%** |
+| **FD002** (259 engines) | FedAvg (5r × 2e) | `mse` | **22.33 ± 1.46** | 5,499.1 ± 2,962.8 | 48.9% ± 8.7% |
+| **FD002** (259 engines) | FedAvg (5r × 2e) | `asymmetric` | 26.07 ± 1.69 | **3,412.6 ± 429.8** (-38.0%) | **25.3% ± 6.3%** |
+| **FD002** (259 engines) | Centralized (10e) | `mse` | **20.17 ± 0.31** | **2,769.5 ± 494.6** | 40.8% ± 5.0% |
+| **FD002** (259 engines) | Centralized (10e) | `asymmetric` | 25.79 ± 2.74 | 3,630.2 ± 1,185.2 (+31.1%) | **20.5% ± 6.1%** |
+
+> **Findings:** `AsymmetricRULLoss` consistently cuts the late-prediction rate roughly in half across all setups and datasets (from 40.8%–63.8% down to 20.5%–34.2%) and sharply reduces NASA Score mean and variance in decentralized settings (FD001 FedAvg: -46.6%, FD002 FedAvg: -38.0% with std dropping from 2,962.8 to 429.8). On FD002, this safety margin trades off higher symmetric RMSE (+10.8% to +27.9%) due to conservative early-prediction bias.
+
 ---
 
 ## 📁 Repository Structure
