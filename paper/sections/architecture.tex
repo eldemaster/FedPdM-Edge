@@ -13,4 +13,4 @@ Coordinator: aggregation $\rightarrow$ global model}}
 \label{fig:arch}
 \end{figure}
 
-\textbf{Privacy scope.} Parameter sharing keeps raw telemetry out of the exchanged payloads, but updates can still leak information. No TLS, secure aggregation or differential privacy mechanism is configured; we make no formal privacy guarantee.
+\textbf{Privacy scope.} Parameter sharing keeps raw telemetry out of the exchanged payloads, but updates can still leak information~\cite{abadi2016dpsgd}. No TLS certificates, secure aggregation, or differential privacy mechanism is configured in the Flower client/server calls or the experiment runner; we make no formal privacy or encrypted-transport guarantee. In addition, centrally computed scaling statistics are shared with clients. Earlier README claims of mTLS and encrypted weights were removed because the checked-in code does not implement them.
