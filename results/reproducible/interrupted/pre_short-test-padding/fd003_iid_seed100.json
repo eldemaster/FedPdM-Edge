@@ -1,0 +1,101 @@
+{
+  "dataset": "FD003",
+  "partition": "iid",
+  "seed": 100,
+  "train_engines": 100,
+  "test_engines": 100,
+  "client_engines": [
+    50,
+    50
+  ],
+  "client_train_groups": [
+    50,
+    50
+  ],
+  "client_test_engines": [
+    50,
+    50
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    9917,
+    11903
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 18.659412384033203,
+      "nasa": 1401.7099609375
+    },
+    "clients": [
+      {
+        "rmse": 18.302440643310547,
+        "nasa": 408.40716552734375
+      },
+      {
+        "rmse": 19.00968360900879,
+        "nasa": 993.302734375
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 22.227801176050388,
+      "nasa": 3635.3979848909385
+    },
+    "clients": [
+      {
+        "rmse": 19.069774627685547,
+        "nasa": 767.5646362304688
+      },
+      {
+        "rmse": 24.989877700805664,
+        "nasa": 2867.833251953125
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 21.186534881591797,
+      "nasa": 2693.413330078125
+    },
+    "clients": [
+      {
+        "rmse": 19.17323875427246,
+        "nasa": 739.0990600585938
+      },
+      {
+        "rmse": 23.024452209472656,
+        "nasa": 1954.314208984375
+      }
+    ],
+    "round_seconds": [
+      3.475762082991423,
+      3.2774106660217512,
+      3.2385939999949187,
+      3.305314749974059,
+      3.947557624982437
+    ]
+  }
+}

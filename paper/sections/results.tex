@@ -1,54 +1,44 @@
 \section{Results}
 \label{sec:results}
+
+The manuscript tables are generated from the raw per-seed JSON files by \texttt{experiments/reproduce.py} and \texttt{paper/make\_figures.py}. Table~\ref{tab:main} reports global IID baseline performance; Table~\ref{tab:algorithms} compares algorithms on the two-regime datasets; Table~\ref{tab:partitions} compares aggregation methods under partition shift; and Table~\ref{tab:clients} reports per-client performance. Entries are mean $\pm$ sample standard deviation; $n$ is shown for global rows. A paired exact sign-flip test compares methods on the same seed and partition (Table~\ref{tab:significance}). With five seeds, the minimum attainable two-sided exact $p$-value is $0.0625$; these tests therefore have limited resolution.
+
+Centralized training has the lowest RMSE on all four IID datasets (14.85--23.91), while FedAvg improves over local-only on FD001, FD003 and FD004 but is nearly tied with local-only on FD002. On the FD002/FD004 regime partitions, FedProx is close to FedAvg. FedAdam with the fixed server learning rate used here degrades substantially (RMSE 78.23 on FD002 and 56.62 on FD004); this is a negative result for this configuration, not evidence that all FedAdam settings fail. The asymmetric objective lowers the aggregate NASA score relative to FedAvg on both regime datasets, with higher RMSE. The compact CNN-LSTM performs worse than the 1D-CNN under this training budget. None of the five-seed paired tests reaches $p<0.05$, consistent with the limited resolution of an exact test at this sample size.
+
 \begin{table*}[t]
 \centering
-\caption{Test performance on the official C-MAPSS test sets (mean $\pm$ std over \FdOneNSeeds{} seeds; RUL capped at 125). Source: \texttt{results/fd00*/benchmark\_table.txt}. NASA scores are sums over the test engines and are not comparable across datasets.}
+\caption{Centralized, isolated local and FedAvg baselines on IID partitions. Values are mean $\pm$ sample standard deviation across five seeds. NASA scores are summed over engines and should only be compared within the same dataset.}
 \label{tab:main}
 \input{generated/table_main.tex}
 \end{table*}
 
-\subsection{FD001: near-IID clients}
-Federated training reaches an RMSE of \FdOneFedRmse{} against \FdOneCentRmse{} centralised and \FdOneLocalRmse{} local-only (Table~\ref{tab:main}). The federated NASA score (\FdOneFedNasa{}) is lower than centralised (\FdOneCentNasa{}), but the gap lies within one standard deviation of the centralised score (\FdOneCentNasaStd{}), so we do not claim a significant advantage. \todo{Significance test or more seeds before interpreting; the README attributes the gap to implicit regularisation, which is a hypothesis we have not tested}
-
-\subsection{FD002: heterogeneous regimes}
-On FD002, federated RMSE is \FdTwoFedRmse{} against \FdTwoLocalRmse{} for local-only training, a reduction of about 3 cycles (12\%), and the NASA score falls from \FdTwoLocalNasa{} to \FdTwoFedNasa{}. Centralised training remains better (\FdTwoCentRmse{}, \FdTwoCentNasa{}), so a gap to the pooled-data bound persists.
-
-\subsection{Per-seed results and convergence}
-Table~\ref{tab:seeds} lists the final-round federated results per seed, and Fig.~\ref{fig:conv} the test RMSE of the global model per round.
-
-\begin{table}[t]
+\begin{table*}[t]
 \centering
-\caption{Federated global model at round 5, per seed (from \texttt{results\_physical\_seed*.json}).}
-\label{tab:seeds}
-\small
-\input{generated/table_seeds.tex}
-\end{table}
+\caption{Global algorithm comparison on regime-grouped FD002 and FD004.}
+\label{tab:algorithms}
+\input{generated/table_algorithms.tex}
+\end{table*}
 
-\begin{figure}[t]
+\begin{table*}[t]
 \centering
-\begin{tikzpicture}
-\begin{axis}[width=\columnwidth,height=5.2cm,xlabel={Round},ylabel={Test RMSE (cycles)},ymax=50,legend pos=north east,legend style={font=\scriptsize},grid=both,grid style={gray!20}]
-\foreach \c in {s42,s100,s2024,s7,s777}{\addplot[blue!40,thin] table[x=round,y=\c]{generated/conv_fd002.dat};}
-\addplot[blue,very thick] table[x=round,y=mean]{generated/conv_fd002.dat};\addlegendentry{FD002 mean}
-\foreach \c in {s42,s100,s2024,s7,s777}{\addplot[red!40,thin] table[x=round,y=\c]{generated/conv_fd001.dat};}
-\addplot[red,very thick] table[x=round,y=mean]{generated/conv_fd001.dat};\addlegendentry{FD001 mean}
-\end{axis}
-\end{tikzpicture}
-\caption{Global-model test RMSE per federated round (thin: seeds). Round 0 is the untrained model. RMSE was still falling at round 5 on FD002.}
-\label{fig:conv}
-\end{figure}
+\caption{FedAvg, FedProx and FedAdam across IID, regime-grouped and engine-count-imbalanced partitions on FD002 and FD004.}
+\label{tab:partitions}
+\input{generated/table_partitions.tex}
+\end{table*}
 
-\begin{figure}[t]
+\begin{table*}[t]
 \centering
-\begin{tikzpicture}
-\begin{axis}[ybar,width=\columnwidth,height=5.2cm,ylabel={Test RMSE},symbolic x coords={Constant,Local,Federated,Centralized},xtick=data,x tick label style={font=\scriptsize},legend style={font=\scriptsize,at={(0.5,1.02)},anchor=south,legend columns=2},bar width=8pt,ymin=0]
-\addplot[fill=red!50,error bars/.cd,y dir=both,y explicit] table[x=label,y=fd001,y error=fd001e]{generated/bars_rmse.dat};\addlegendentry{FD001}
-\addplot[fill=blue!50,error bars/.cd,y dir=both,y explicit] table[x=label,y=fd002,y error=fd002e]{generated/bars_rmse.dat};\addlegendentry{FD002}
-\end{axis}
-\end{tikzpicture}
-\caption{RMSE of the four methods (from Table~\ref{tab:main}).}
-\label{fig:bars}
-\end{figure}
+\caption{Per-client RMSE and NASA score on regime-grouped FD002 and FD004 (mean $\pm$ sample standard deviation over five paired seeds). Client labels denote the two operating-regime groups.}
+\label{tab:clients}
+\input{generated/table_clients.tex}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\caption{Paired exact sign-flip tests for baseline and method comparisons, by dataset, partition and metric.}
+\label{tab:significance}
+\input{generated/table_significance.tex}
+\end{table*}
 
 \subsection{Asymmetric risk-aware training}
 Table~\ref{tab:asymmetric} compares symmetric \texttt{mse} against \texttt{AsymmetricRULLoss} ($\alpha_{\text{late}}{=}2.5$, $\alpha_{\text{early}}{=}0.5$) under the controlled five-seed protocol in \texttt{benchmark\_asymmetric\_loss.py}.
@@ -65,10 +55,7 @@ Across all six dataset--setup pairs, \texttt{AsymmetricRULLoss} cuts the late-pr
 The results also expose a dataset-dependent safety--accuracy trade-off. On FD001, \texttt{AsymmetricRULLoss} improves both NASA score and RMSE for Isolated Local (\AsymFdOneLocalMseRmse{} to \AsymFdOneLocalAsyRmse{}) and FedAvg (\AsymFdOneFedMseRmse{} to \AsymFdOneFedAsyRmse{}), with only a slight RMSE increase for Centralised (\AsymFdOneCentMseRmse{} to \AsymFdOneCentAsyRmse{}). On heterogeneous FD002, however, the conservative early-prediction bias increases symmetric RMSE across all setups (\AsymFdTwoLocalMseRmse{} to \AsymFdTwoLocalAsyRmse{} Local; \AsymFdTwoFedMseRmse{} to \AsymFdTwoFedAsyRmse{} FedAvg; \AsymFdTwoCentMseRmse{} to \AsymFdTwoCentAsyRmse{} Centralised) and raises the Centralised NASA score (\AsymFdTwoCentNasaDelta{}, driven by conservative early-prediction outliers such as seed 1024).
 
 \subsection{Edge cost}
-\todo{Measured per-round wall-clock on Raspberry Pi 4 (local training time, aggregation, communication), peak memory, energy, inference latency per window --- none are recorded in results/ yet}
+Per-round CPU training time, peak process resident memory, and model-tensor payload bytes are recorded by \texttt{experiments/profile\_edge.py}. The profiler's smoke run was on a Mac and is not evidence of Raspberry Pi performance; no Pi run completed because the remote hosts were inaccessible. Payload bytes count one model download and one client update upload and exclude gRPC framing, so they do not measure network wire overhead.
 
-\subsection{FedProx and round sweep}
-\todo{FedProx vs.\ FedAvg on FD002; sweep over rounds and local epochs; FD004 --- not run yet}
-
-\subsection{Prediction plots}
-\todo{RUL predicted vs.\ true per engine (\texttt{plot\_rul.py}) once the figure is exported to paper/figures/}
+\subsection{Result provenance}
+Raw metrics and training configuration are stored in \texttt{results/reproducible/}. The older FD001/FD002 artifacts use a different pipeline and are not included in these tables.

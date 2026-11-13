@@ -1,0 +1,205 @@
+{
+  "dataset": "FD002",
+  "partition": "regime",
+  "seed": 42,
+  "train_engines": 260,
+  "test_engines": 259,
+  "client_engines": [
+    260,
+    260
+  ],
+  "client_train_groups": [
+    780,
+    780
+  ],
+  "client_test_engines": [
+    112,
+    147
+  ],
+  "client_engine_overlap": 260,
+  "client_training_windows": [
+    20840,
+    25379
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "short_test_windows": "left-pad with first observed row to include every official test engine",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 23.384685516357422,
+      "nasa": 9121.287109375
+    },
+    "clients": [
+      {
+        "rmse": 23.588912963867188,
+        "nasa": 3318.09814453125
+      },
+      {
+        "rmse": 23.22787857055664,
+        "nasa": 5803.1884765625
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 22.4975021627808,
+      "nasa": 4279.505293292055
+    },
+    "clients": [
+      {
+        "rmse": 23.197385787963867,
+        "nasa": 1334.9869384765625
+      },
+      {
+        "rmse": 21.949283599853516,
+        "nasa": 2944.5185546875
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.141639709472656,
+      "nasa": 4702.3994140625
+    },
+    "clients": [
+      {
+        "rmse": 23.148977279663086,
+        "nasa": 1606.8126220703125
+      },
+      {
+        "rmse": 23.136049270629883,
+        "nasa": 3095.5869140625
+      }
+    ],
+    "round_seconds": [
+      7.450474874989595,
+      7.413384084007703,
+      7.4662591249798425,
+      8.155728667014046,
+      7.971666999976151
+    ]
+  },
+  "fedprox": {
+    "global": {
+      "rmse": 22.895931243896484,
+      "nasa": 4855.86474609375
+    },
+    "clients": [
+      {
+        "rmse": 22.808433532714844,
+        "nasa": 1595.2724609375
+      },
+      {
+        "rmse": 22.962373733520508,
+        "nasa": 3260.591796875
+      }
+    ],
+    "round_seconds": [
+      7.737826958007645,
+      7.235402082995279,
+      7.2574680839898065,
+      9.083787500014296,
+      11.463986874994589
+    ]
+  },
+  "fedadam": {
+    "global": {
+      "rmse": 84.97908782958984,
+      "nasa": 51085216.0
+    },
+    "clients": [
+      {
+        "rmse": 84.02590942382812,
+        "nasa": 20162516.0
+      },
+      {
+        "rmse": 85.69821166992188,
+        "nasa": 30922704.0
+      }
+    ],
+    "round_seconds": [
+      8.634227417001966,
+      7.847356207988923,
+      8.569418250001036,
+      8.88160362499184,
+      8.442398458020762
+    ]
+  },
+  "federated_asymmetric": {
+    "global": {
+      "rmse": 27.452377319335938,
+      "nasa": 3996.57275390625
+    },
+    "clients": [
+      {
+        "rmse": 26.9446964263916,
+        "nasa": 1507.39697265625
+      },
+      {
+        "rmse": 27.832969665527344,
+        "nasa": 2489.17578125
+      }
+    ],
+    "round_seconds": [
+      8.440024999988964,
+      8.827969833015231,
+      8.160106459021335,
+      8.01471649997984,
+      8.13619375001872
+    ]
+  },
+  "asymmetric": {
+    "global": {
+      "rmse": 25.4072265625,
+      "nasa": 3488.220947265625
+    },
+    "clients": [
+      {
+        "rmse": 25.121580123901367,
+        "nasa": 1361.4190673828125
+      },
+      {
+        "rmse": 25.622724533081055,
+        "nasa": 2126.80224609375
+      }
+    ],
+    "round_seconds": []
+  },
+  "cnn_lstm": {
+    "global": {
+      "rmse": 43.132686614990234,
+      "nasa": 25382.43359375
+    },
+    "clients": [
+      {
+        "rmse": 41.420631408691406,
+        "nasa": 10218.0615234375
+      },
+      {
+        "rmse": 44.39281463623047,
+        "nasa": 15164.37109375
+      }
+    ],
+    "round_seconds": []
+  }
+}

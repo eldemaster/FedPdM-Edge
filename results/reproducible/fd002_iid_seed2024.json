@@ -1,0 +1,102 @@
+{
+  "dataset": "FD002",
+  "partition": "iid",
+  "seed": 2024,
+  "train_engines": 260,
+  "test_engines": 259,
+  "client_engines": [
+    130,
+    130
+  ],
+  "client_train_groups": [
+    130,
+    130
+  ],
+  "client_test_engines": [
+    130,
+    129
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    22365,
+    23854
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "short_test_windows": "left-pad with first observed row to include every official test engine",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 19.944503784179688,
+      "nasa": 2901.568359375
+    },
+    "clients": [
+      {
+        "rmse": 18.828262329101562,
+        "nasa": 1481.6378173828125
+      },
+      {
+        "rmse": 21.009485244750977,
+        "nasa": 1419.930908203125
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 23.068099929295602,
+      "nasa": 5147.549360015986
+    },
+    "clients": [
+      {
+        "rmse": 22.26420021057129,
+        "nasa": 2365.028564453125
+      },
+      {
+        "rmse": 23.8508358001709,
+        "nasa": 2782.52099609375
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 23.122831344604492,
+      "nasa": 4015.741943359375
+    },
+    "clients": [
+      {
+        "rmse": 22.951496124267578,
+        "nasa": 2244.60498046875
+      },
+      {
+        "rmse": 23.29422378540039,
+        "nasa": 1771.13671875
+      }
+    ],
+    "round_seconds": [
+      8.334564332995797,
+      8.220002708985703,
+      8.528904500009958,
+      9.350032917020144,
+      9.499903707997873
+    ]
+  }
+}

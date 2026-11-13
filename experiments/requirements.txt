@@ -1,0 +1,4 @@
+# Versions used for the paired local experiment run.
+numpy==2.5.4
+pandas==3.1.1
+torch==2.15.0

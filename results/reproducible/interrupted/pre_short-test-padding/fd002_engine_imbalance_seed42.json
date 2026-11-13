@@ -1,0 +1,144 @@
+{
+  "dataset": "FD002",
+  "partition": "engine_imbalance",
+  "seed": 42,
+  "train_engines": 260,
+  "test_engines": 253,
+  "client_engines": [
+    65,
+    195
+  ],
+  "client_train_groups": [
+    65,
+    195
+  ],
+  "client_test_engines": [
+    63,
+    190
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    12008,
+    34211
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 22.368383407592773,
+      "nasa": 2751.48681640625
+    },
+    "clients": [
+      {
+        "rmse": 21.65589141845703,
+        "nasa": 489.5027770996094
+      },
+      {
+        "rmse": 22.599674224853516,
+        "nasa": 2261.98388671875
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 24.9207433496582,
+      "nasa": 6676.528543230867
+    },
+    "clients": [
+      {
+        "rmse": 32.474239349365234,
+        "nasa": 4364.68408203125
+      },
+      {
+        "rmse": 21.84703826904297,
+        "nasa": 2311.84423828125
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 22.486825942993164,
+      "nasa": 4023.0087890625
+    },
+    "clients": [
+      {
+        "rmse": 21.643795013427734,
+        "nasa": 610.9837646484375
+      },
+      {
+        "rmse": 22.759462356567383,
+        "nasa": 3412.02490234375
+      }
+    ],
+    "round_seconds": [
+      7.095778999995673,
+      6.980780250014504,
+      6.989671874995111,
+      7.12649524997687,
+      7.366975917015225
+    ]
+  },
+  "fedprox": {
+    "global": {
+      "rmse": 22.493236541748047,
+      "nasa": 4292.330078125
+    },
+    "clients": [
+      {
+        "rmse": 21.676748275756836,
+        "nasa": 628.6959228515625
+      },
+      {
+        "rmse": 22.75749969482422,
+        "nasa": 3663.634033203125
+      }
+    ],
+    "round_seconds": [
+      7.1780675839981996,
+      7.1546106669993605,
+      7.102124166005524,
+      9.462642291997327,
+      9.22669779098942
+    ]
+  },
+  "fedadam": {
+    "global": {
+      "rmse": 65.36285400390625,
+      "nasa": 3816699.0
+    },
+    "clients": [
+      {
+        "rmse": 64.2248306274414,
+        "nasa": 928786.875
+      },
+      {
+        "rmse": 65.73585510253906,
+        "nasa": 2887912.0
+      }
+    ],
+    "round_seconds": [
+      9.130154208018212,
+      8.832795124995755,
+      9.08282120799413,
+      8.7555333749915,
+      8.310713083017617
+    ]
+  }
+}

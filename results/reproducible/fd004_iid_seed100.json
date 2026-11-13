@@ -1,0 +1,102 @@
+{
+  "dataset": "FD004",
+  "partition": "iid",
+  "seed": 100,
+  "train_engines": 249,
+  "test_engines": 248,
+  "client_engines": [
+    125,
+    124
+  ],
+  "client_train_groups": [
+    125,
+    124
+  ],
+  "client_test_engines": [
+    124,
+    124
+  ],
+  "client_engine_overlap": 0,
+  "client_training_windows": [
+    27369,
+    26659
+  ],
+  "protocol": {
+    "window": 30,
+    "rul_cap": 125,
+    "local_epochs": 2,
+    "rounds": 5,
+    "central_epochs": 10,
+    "batch_size": 128,
+    "threads": 1,
+    "seeds": [
+      42,
+      100,
+      2024,
+      7,
+      777
+    ],
+    "scaler": "global min/max fit on training engines",
+    "clip": "normalized settings/sensors to [-5,5]",
+    "short_test_windows": "left-pad with first observed row to include every official test engine",
+    "regime": "for FD002/FD004, group each window by its endpoint regime using six-cluster k-means fitted to cycle-level operating settings",
+    "mTLS": false
+  },
+  "centralized": {
+    "global": {
+      "rmse": 23.109121322631836,
+      "nasa": 4141.6806640625
+    },
+    "clients": [
+      {
+        "rmse": 22.065135955810547,
+        "nasa": 1966.2584228515625
+      },
+      {
+        "rmse": 24.107938766479492,
+        "nasa": 2175.422607421875
+      }
+    ],
+    "round_seconds": []
+  },
+  "local_only": {
+    "global": {
+      "rmse": 30.9762599588328,
+      "nasa": 30604.51572936754
+    },
+    "clients": [
+      {
+        "rmse": 31.85171127319336,
+        "nasa": 15575.140625
+      },
+      {
+        "rmse": 30.075336456298828,
+        "nasa": 15029.3759765625
+      }
+    ],
+    "round_seconds": []
+  },
+  "fedavg": {
+    "global": {
+      "rmse": 27.628215789794922,
+      "nasa": 12372.6494140625
+    },
+    "clients": [
+      {
+        "rmse": 26.952455520629883,
+        "nasa": 4672.7666015625
+      },
+      {
+        "rmse": 28.2878360748291,
+        "nasa": 7699.88232421875
+      }
+    ],
+    "round_seconds": [
+      9.156414750003023,
+      8.915499499998987,
+      9.010273333988152,
+      9.800922374997754,
+      9.98000549999415
+    ]
+  }
+}

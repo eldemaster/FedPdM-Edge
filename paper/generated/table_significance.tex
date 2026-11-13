@@ -1,0 +1,38 @@
+\begin{tabular}{llllr}
+\toprule
+Dataset & Partition & Comparison & Metric & paired $p$ \\
+\midrule
+FD001 & iid & fedavg\_vs\_centralized & rmse & 0.0625 \\
+FD001 & iid & fedavg\_vs\_centralized & nasa & 0.0625 \\
+FD001 & iid & fedavg\_vs\_local\_only & rmse & 0.1875 \\
+FD001 & iid & fedavg\_vs\_local\_only & nasa & 0.0625 \\
+FD002 & regime & fedavg\_vs\_centralized & rmse & 0.1250 \\
+FD002 & regime & fedavg\_vs\_centralized & nasa & 0.3750 \\
+FD002 & regime & fedavg\_vs\_local\_only & rmse & 0.2500 \\
+FD002 & regime & fedavg\_vs\_local\_only & nasa & 0.5000 \\
+FD002 & regime & fedavg\_vs\_fedprox & rmse & 0.1250 \\
+FD002 & regime & fedavg\_vs\_fedprox & nasa & 0.0625 \\
+FD002 & regime & fedavg\_vs\_fedadam & rmse & 0.0625 \\
+FD002 & regime & fedavg\_vs\_fedadam & nasa & 0.0625 \\
+FD002 & regime & fedavg\_vs\_federated\_asymmetric & rmse & 0.0625 \\
+FD002 & regime & fedavg\_vs\_federated\_asymmetric & nasa & 0.5625 \\
+FD002 & regime & centralized\_vs\_asymmetric & rmse & 0.0625 \\
+FD002 & regime & centralized\_vs\_asymmetric & nasa & 0.1875 \\
+FD002 & regime & centralized\_vs\_cnn\_lstm & rmse & 0.0625 \\
+FD002 & regime & centralized\_vs\_cnn\_lstm & nasa & 0.0625 \\
+FD004 & regime & fedavg\_vs\_centralized & rmse & 0.0625 \\
+FD004 & regime & fedavg\_vs\_centralized & nasa & 0.0625 \\
+FD004 & regime & fedavg\_vs\_local\_only & rmse & 0.8125 \\
+FD004 & regime & fedavg\_vs\_local\_only & nasa & 0.7500 \\
+FD004 & regime & fedavg\_vs\_fedprox & rmse & 1.0000 \\
+FD004 & regime & fedavg\_vs\_fedprox & nasa & 1.0000 \\
+FD004 & regime & fedavg\_vs\_fedadam & rmse & 0.0625 \\
+FD004 & regime & fedavg\_vs\_fedadam & nasa & 0.0625 \\
+FD004 & regime & fedavg\_vs\_federated\_asymmetric & rmse & 0.0625 \\
+FD004 & regime & fedavg\_vs\_federated\_asymmetric & nasa & 0.0625 \\
+FD004 & regime & centralized\_vs\_asymmetric & rmse & 0.0625 \\
+FD004 & regime & centralized\_vs\_asymmetric & nasa & 0.3125 \\
+FD004 & regime & centralized\_vs\_cnn\_lstm & rmse & 0.0625 \\
+FD004 & regime & centralized\_vs\_cnn\_lstm & nasa & 0.0625 \\
+\bottomrule
+\end{tabular}

@@ -1,19 +1,18 @@
-# Paper skeleton (IEEEtran)
+# Paper
 
-Federated PdM on edge nodes: C-MAPSS FD001/FD002, FedAvg, asymmetric NASA score.
+IEEEtran manuscript source for the paired FD001–FD004 study.
 
 ## Build
+
 ```bash
 cd paper
-make            # regenerates tables/plot data from ../results, then runs latexmk
-make clean
+make
 ```
-Needs a TeX Live with `IEEEtran`, `pgfplots`, `booktabs`, `multirow`, `cite`, and `latexmk`. `make_figures.py` uses only the Python standard library.
 
-## Layout
-- `main.tex`, `sections/*.tex`, `references.bib` (only real, checked references; verify before submission)
-- `make_figures.py` parses `results/fd00*/benchmark_table.txt` and `results_physical_seed*.json` into `generated/` (tables, `macros.tex`, pgfplots data). Do not edit `generated/` by hand; rerun after `results/` changes.
-- `figures/` for drawn/exported figures (empty so far; `results/` has no PNGs).
+The build requires TeX Live with `IEEEtran`, `pgfplots`, `booktabs`, `multirow`, `cite`, and `latexmk`. `make_figures.py` uses only the Python standard library and generates result tables only from five-seed rows in `results/reproducible/summary.csv`.
+
+Do not edit `generated/` by hand. Run `python experiments/reproduce.py --data /path/to/CMAPSSData.zip` from the repository root, then run `python make_figures.py` from `paper/` after the matrix completes. Raw run JSON files are the source of truth.
 
 ## Open items
-Every pending value is a red `\todo{...}`; list them with `grep -rn 'todo{' sections main.tex`.
+
+Remaining `\todo{...}` markers are editorial items requiring author input or verified literature citations. Results, privacy claims, and edge hardware limitations are documented in the manuscript and `results/EXPERIMENTS.md`.

@@ -1,12 +1,18 @@
-\begin{tabular}{llcrr}\toprule
-Dataset & Method & Data placement & RMSE (cycles) & NASA score \\\midrule
-\multirow{4}{*}{FD001} & Constant baseline & n/a & $40.46\pm0.00$ & $17\,301.19\pm0.00$ \\
- & Isolated local (avg.) & local & $15.55\pm0.46$ & $464.43\pm74.67$ \\
- & FedAvg swarm (ours) & local + updates shared & \textbf{$14.92\pm0.42$} & \textbf{$394.85\pm45.73$} \\
- & Centralized reference & pooled data & $14.75\pm0.69$ & $425.36\pm94.56$ \\
+\begin{tabular}{lllrrr}
+\toprule
+Dataset & Partition & Method & $n$ & RMSE & NASA score \\
 \midrule
-\multirow{4}{*}{FD002} & Constant baseline & n/a & $43.51\pm0.00$ & $63\,730.17\pm0.00$ \\
- & Isolated local (avg.) & local & $25.01\pm0.54$ & $11\,937.03\pm2\,207.16$ \\
- & FedAvg swarm (ours) & local + updates shared & \textbf{$22.27\pm0.44$} & \textbf{$6\,037.14\pm1\,029.92$} \\
- & Centralized reference & pooled data & $20.39\pm1.11$ & $3\,394.85\pm971.55$ \\
-\bottomrule\end{tabular}
+FD001 & iid & centralized & 5 & $14.85\pm0.97$ & $439.85\pm139.24$ \\
+FD001 & iid & local\_only & 5 & $19.80\pm0.83$ & $1\,334.44\pm328.37$ \\
+FD001 & iid & fedavg & 5 & $19.27\pm1.14$ & $1\,063.17\pm268.40$ \\
+FD002 & iid & centralized & 5 & $22.12\pm1.78$ & $4\,180.30\pm2\,858.02$ \\
+FD002 & iid & local\_only & 5 & $23.35\pm0.41$ & $5\,283.19\pm443.40$ \\
+FD002 & iid & fedavg & 5 & $23.33\pm0.24$ & $4\,179.66\pm680.06$ \\
+FD003 & iid & centralized & 5 & $18.00\pm0.85$ & $1\,093.74\pm311.96$ \\
+FD003 & iid & local\_only & 5 & $21.98\pm0.30$ & $3\,368.98\pm477.38$ \\
+FD003 & iid & fedavg & 5 & $21.60\pm0.55$ & $2\,959.02\pm559.00$ \\
+FD004 & iid & centralized & 5 & $23.91\pm0.81$ & $4\,758.71\pm1\,169.51$ \\
+FD004 & iid & local\_only & 5 & $28.43\pm1.49$ & $15\,523.43\pm8\,611.70$ \\
+FD004 & iid & fedavg & 5 & $27.07\pm0.56$ & $8\,059.20\pm2\,868.94$ \\
+\bottomrule
+\end{tabular}
