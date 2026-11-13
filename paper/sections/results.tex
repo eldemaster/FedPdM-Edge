@@ -50,6 +50,20 @@ Table~\ref{tab:seeds} lists the final-round federated results per seed, and Fig.
 \label{fig:bars}
 \end{figure}
 
+\subsection{Asymmetric risk-aware training}
+Table~\ref{tab:asymmetric} compares symmetric \texttt{mse} against \texttt{AsymmetricRULLoss} ($\alpha_{\text{late}}{=}2.5$, $\alpha_{\text{early}}{=}0.5$) under the controlled five-seed protocol in \texttt{benchmark\_asymmetric\_loss.py}.
+
+\begin{table*}[t]
+\centering
+\caption{Controlled five-seed comparison of symmetric MSE vs.\ \texttt{AsymmetricRULLoss} ($\alpha_{\text{late}}{=}2.5$, $\alpha_{\text{early}}{=}0.5$; seeds 42, 123, 456, 789, 1024; mean $\pm$ std). Source: \texttt{results/asymmetric\_loss\_comparison.json}. Bold marks the better value per setup and dataset.}
+\label{tab:asymmetric}
+\input{generated/table_asymmetric.tex}
+\end{table*}
+
+Across all six dataset--setup pairs, \texttt{AsymmetricRULLoss} cuts the late-prediction rate ($\hat{y} > y$) roughly in half, from $40.8\%$--$63.8\%$ under MSE down to $20.5\%$--$34.2\%$. In decentralized settings, this shift substantially reduces both the mean and seed-to-seed variance of the NASA score: on FD001, FedAvg drops by \AsymFdOneFedNasaDelta{} (\AsymFdOneFedMseNasa{}$\pm$\AsymFdOneFedMseNasaStd{} to \AsymFdOneFedAsyNasa{}$\pm$\AsymFdOneFedAsyNasaStd{}) and Isolated Local by \AsymFdOneLocalNasaDelta{}; on FD002, FedAvg drops by \AsymFdTwoFedNasaDelta{} (\AsymFdTwoFedMseNasa{}$\pm$\AsymFdTwoFedMseNasaStd{} to \AsymFdTwoFedAsyNasa{}$\pm$\AsymFdTwoFedAsyNasaStd{}, with std falling nearly sevenfold) and Isolated Local by \AsymFdTwoLocalNasaDelta{}.
+
+The results also expose a dataset-dependent safety--accuracy trade-off. On FD001, \texttt{AsymmetricRULLoss} improves both NASA score and RMSE for Isolated Local (\AsymFdOneLocalMseRmse{} to \AsymFdOneLocalAsyRmse{}) and FedAvg (\AsymFdOneFedMseRmse{} to \AsymFdOneFedAsyRmse{}), with only a slight RMSE increase for Centralised (\AsymFdOneCentMseRmse{} to \AsymFdOneCentAsyRmse{}). On heterogeneous FD002, however, the conservative early-prediction bias increases symmetric RMSE across all setups (\AsymFdTwoLocalMseRmse{} to \AsymFdTwoLocalAsyRmse{} Local; \AsymFdTwoFedMseRmse{} to \AsymFdTwoFedAsyRmse{} FedAvg; \AsymFdTwoCentMseRmse{} to \AsymFdTwoCentAsyRmse{} Centralised) and raises the Centralised NASA score (\AsymFdTwoCentNasaDelta{}, driven by conservative early-prediction outliers such as seed 1024).
+
 \subsection{Edge cost}
 \todo{Measured per-round wall-clock on Raspberry Pi 4 (local training time, aggregation, communication), peak memory, energy, inference latency per window --- none are recorded in results/ yet}
 

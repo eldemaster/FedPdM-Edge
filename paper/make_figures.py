@@ -30,12 +30,27 @@ def fmt(x, nd=2):
 def parse_table(ds):
     p = ROOT / "results" / ds / "benchmark_table.txt"
     res = {}
-    if not p.exists():
+    if p.exists():
+        for line in p.read_text(encoding="utf-8").splitlines():
+            m = PAT.match(line.strip())
+            if m:
+                res[m.group(1).strip()] = tuple(float(m.group(i)) for i in range(2, 6))
         return res
-    for line in p.read_text(encoding="utf-8").splitlines():
-        m = PAT.match(line.strip())
-        if m:
-            res[m.group(1).strip()] = tuple(float(m.group(i)) for i in range(2, 6))
+    # Fallback to benchmark_e10.json + physical seed JSONs when benchmark_table.txt is absent
+    ej = ROOT / "results" / ds / "benchmark_e10.json"
+    if ej.exists():
+        data = json.load(open(ej))
+        key_map = {"baseline": "Constant Baseline", "local": "Local-Only", "central": "Centralized"}
+        for row in data.get("summary", []):
+            if row["method"] in key_map:
+                res[key_map[row["method"]]] = (
+                    row["rmse_mean"], row["rmse_std"], row["nasa_mean"], row["nasa_std"]
+                )
+    ds_seeds = load_seeds(ds)
+    if ds_seeds:
+        rm = [m["model_rmse"][-1][1] for m in ds_seeds.values()]
+        ns = [m["nasa_score"][-1][1] for m in ds_seeds.values()]
+        res["Federated"] = (st.mean(rm), st.pstdev(rm), st.mean(ns), st.pstdev(ns))
     return res
 
 
@@ -104,6 +119,67 @@ for ds, _ in DATASETS:
             macros.append(rf"\newcommand{{\{pre}{nm}{q}}}{{{val}}}")
 tex.append(r"\bottomrule\end{tabular}")
 (OUT / "table_seeds.tex").write_text("\n".join(tex) + "\n")
+
+# ---- asymmetric loss comparison table + macros ----------------------------
+asym_path = ROOT / "results" / "asymmetric_loss_comparison.json"
+asym_tex = [
+    r"\begin{tabular}{llcccrr}\toprule",
+    r"Dataset & Setup & Loss & RMSE (cycles) & NASA score & $\Delta$ NASA & Late rate (\%) \\\midrule",
+]
+if asym_path.exists():
+    asym_data = json.load(open(asym_path))
+    setup_rows = [
+        ("local", "Isolated local"),
+        ("fedavg", "FedAvg (5r $\\times$ 2e)"),
+        ("central", "Centralized (10e)"),
+    ]
+    for i, (ds_key, ds_label) in enumerate([("FD001", "FD001"), ("FD002", "FD002")]):
+        pre = "AsymFdOne" if ds_key == "FD001" else "AsymFdTwo"
+        sub = asym_data["subsets"][ds_key]
+        losses = sub["losses"]
+        for j, (s_key, s_label) in enumerate(setup_rows):
+            s_macro = {"local": "Local", "fedavg": "Fed", "central": "Cent"}[s_key]
+            mse_s = losses["mse"]["summary"][s_key]
+            asy_s = losses["asymmetric"]["summary"][s_key]
+            for loss_key, loss_label, cur, other in [
+                ("mse", r"\texttt{mse}", mse_s, asy_s),
+                ("asymmetric", r"\texttt{asymmetric}", asy_s, mse_s),
+            ]:
+                l_macro = "Mse" if loss_key == "mse" else "Asy"
+                ds_col = rf"\multirow{{6}}{{*}}{{{ds_label}}}" if (j == 0 and loss_key == "mse") else ""
+                setup_col = rf"\multirow{{2}}{{*}}{{{s_label}}}" if loss_key == "mse" else ""
+                r_str = rf"${fmt(cur['rmse_mean'])}\pm{fmt(cur['rmse_std'])}$"
+                if cur["rmse_mean"] <= other["rmse_mean"]:
+                    r_str = rf"\textbf{{{r_str}}}"
+                n_str = rf"${fmt(cur['nasa_score_mean'], 1)}\pm{fmt(cur['nasa_score_std'], 1)}$"
+                if cur["nasa_score_mean"] <= other["nasa_score_mean"]:
+                    n_str = rf"\textbf{{{n_str}}}"
+                l_str = rf"${fmt(cur['late_rate_pct_mean'], 1)}\pm{fmt(cur['late_rate_pct_std'], 1)}$"
+                if cur["late_rate_pct_mean"] <= other["late_rate_pct_mean"]:
+                    l_str = rf"\textbf{{{l_str}}}"
+                if loss_key == "mse":
+                    d_str = "---"
+                else:
+                    pct = 100.0 * (cur["nasa_score_mean"] - other["nasa_score_mean"]) / other["nasa_score_mean"]
+                    sign = "+" if pct > 0 else ""
+                    d_str = rf"${sign}{pct:.1f}\%$"
+                    macros.append(rf"\newcommand{{\{pre}{s_macro}NasaDelta}}{{{sign}{pct:.1f}\%}}")
+                asym_tex.append(rf"{ds_col} & {setup_col} & {loss_label} & {r_str} & {n_str} & {d_str} & {l_str} \\")
+                macros += [
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}Rmse}}{{{fmt(cur['rmse_mean'])}}}",
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}RmseStd}}{{{fmt(cur['rmse_std'])}}}",
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}Nasa}}{{{fmt(cur['nasa_score_mean'], 1)}}}",
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}NasaStd}}{{{fmt(cur['nasa_score_std'], 1)}}}",
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}Late}}{{{fmt(cur['late_rate_pct_mean'], 1)}}}",
+                    rf"\newcommand{{\{pre}{s_macro}{l_macro}LateStd}}{{{fmt(cur['late_rate_pct_std'], 1)}}}",
+                ]
+            if j < len(setup_rows) - 1:
+                asym_tex.append(r"\cmidrule(lr){2-7}")
+        if i == 0:
+            asym_tex.append(r"\midrule")
+asym_tex.append(r"\bottomrule\end{tabular}")
+(OUT / "table_asymmetric.tex").write_text("\n".join(asym_tex) + "\n")
+
 (OUT / "macros.tex").write_text("% auto-generated by make_figures.py\n" + "\n".join(macros) + "\n")
 
 # convergence: global-model RMSE on official test set vs round, one column per seed
