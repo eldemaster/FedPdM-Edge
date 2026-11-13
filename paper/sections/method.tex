@@ -7,7 +7,7 @@ For an engine at cycle $t$, input $\mathbf{X}_t\in\mathbb{R}^{W\times d}$ stacks
 The network (22\,273 parameters) is: Conv1d(17$\to$32, $k{=}3$)--ReLU--MaxPool(2); Conv1d(32$\to$64, $k{=}3$)--ReLU--MaxPool(2); flatten (448); Linear(448$\to$32)--ReLU; Linear(32$\to$1). The float32 model is 89\,092 bytes; one downlink plus one uplink is 178\,184 tensor bytes per round, excluding protocol overhead. These are architecture-derived payload sizes; the Pi profiler records measured process RSS and training time.
 
 \subsection{Federated averaging}
-With $K$ clients holding $n_k$ windows ($N=\sum_k n_k$), round $t$ proceeds: the server sends $\mathbf{w}^{(t)}$; each client runs $E$ local epochs of Adam on its data minimising MSE, giving $\mathbf{w}_k^{(t+1)}$; the server aggregates
+With $K$ clients holding $n_k$ windows ($N=\sum_k n_k$), round $t$ proceeds: the server sends $\mathbf{w}^{(t)}$; each client runs $E$ local epochs of Adam on its data minimising the configured local objective $\mathcal{L}$ (MSE by default, or \texttt{AsymmetricRULLoss}), giving $\mathbf{w}_k^{(t+1)}$; the server aggregates
 \begin{equation}
 \mathbf{w}^{(t+1)}=\sum_{k=1}^{K}\frac{n_k}{N}\,\mathbf{w}_k^{(t+1)}.
 \end{equation}
@@ -15,8 +15,18 @@ FedProx adds $\frac{\mu}{2}\lVert\mathbf{w}-\mathbf{w}^{(t)}\rVert_2^2$ to each 
 
 The asymmetric training-loss ablation averages the same exponential penalty used by the NASA metric over each batch. To bound gradients, the exponent is capped at 20 during training; evaluation uses the uncapped NASA score. The CNN-LSTM ablation uses a 16-channel convolution, max pooling and a 24-unit LSTM head (4\,889 parameters); it is trained centrally against the 1D-CNN centralized baseline.
 
+\subsection{Asymmetric risk-aware training loss}
+To align local and federated optimization with the safety-critical NASA Asymmetric Scoring Function without the gradient explosion of raw exponential objectives (whose gradients grow as $\exp(|d|/10)$ on large early-training errors), \texttt{common.py} provides \texttt{AsymmetricRULLoss} (selectable via \texttt{LOSS\_FN=asymmetric} or \texttt{--loss-fn asymmetric} in \texttt{client.py}, \texttt{final\_benchmark.py}, and \texttt{fed\_sim.py}; default remains \texttt{mse}). For prediction residual $d = \hat{y} - y$, it applies a $C^1$-smooth asymmetric quadratic penalty:
+\begin{equation}
+\mathcal{L}_{\text{asym}}(d) = \begin{cases}
+\alpha_{\text{late}}\,d^2, & d \ge 0 \quad (\text{late prediction: }\hat{y} \ge y),\\
+\alpha_{\text{early}}\,d^2, & d < 0 \quad (\text{early prediction: }\hat{y} < y),
+\end{cases}
+\end{equation}
+with $\alpha_{\text{late}} > \alpha_{\text{early}} > 0$ (default $\alpha_{\text{late}}{=}2.5$, $\alpha_{\text{early}}{=}0.5$, a $5\times$ penalty ratio on late predictions). Because $\mathcal{L}_{\text{asym}}$ is quadratic on both half-lines, its gradient is continuous at $d=0$ and bounded linearly in $|d|$, ensuring stable Adam updates while steering both local and federated models away from dangerous RUL overestimation.
+
 \subsection{Evaluation metrics}
-With $\Delta_i=\hat y_i-y_i$ (positive = late prediction), RMSE is $\sqrt{\frac1M\sum_i\Delta_i^2}$ and the NASA score~\cite{saxena2008damage} is
+With $\Delta_i=\hat y_i-y_i$ (positive = late prediction), RMSE is $\sqrt{\frac1M\sum_i\Delta_i^2}$, the late-prediction rate (\texttt{late\_prediction\_rate} in \texttt{common.py}) is $\frac{1}{M}\sum_{i=1}^{M}\mathbb{I}(\hat{y}_i > y_i)$, and the NASA score~\cite{saxena2008damage} is
 \begin{equation}
 S=\sum_{i=1}^{M}\begin{cases}e^{-\Delta_i/13}-1,&\Delta_i<0\\ e^{\Delta_i/10}-1,&\Delta_i\ge 0.\end{cases}
 \end{equation}
