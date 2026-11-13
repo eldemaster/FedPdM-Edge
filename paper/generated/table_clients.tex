@@ -2,37 +2,37 @@
 \toprule
 Dataset & Partition & Method & Client & RMSE & NASA score \\
 \midrule
-FD002 & regime & centralized & 1 & $21.78\pm1.12$ & $1\,824.32\pm867.07$ \\
-FD002 & regime & centralized & 2 & $21.21\pm1.23$ & $3\,938.47\pm1\,313.34$ \\
-FD002 & regime & local\_only & 1 & $23.51\pm0.43$ & $1\,811.16\pm587.92$ \\
-FD002 & regime & local\_only & 2 & $22.67\pm0.59$ & $3\,221.86\pm1\,129.69$ \\
-FD002 & regime & fedavg & 1 & $23.61\pm0.67$ & $1\,594.57\pm502.96$ \\
-FD002 & regime & fedavg & 2 & $23.41\pm0.60$ & $2\,830.80\pm870.10$ \\
-FD002 & regime & fedprox & 1 & $23.35\pm0.58$ & $1\,589.67\pm474.67$ \\
-FD002 & regime & fedprox & 2 & $23.26\pm0.41$ & $2\,992.23\pm862.77$ \\
-FD002 & regime & fedadam & 1 & $77.42\pm23.30$ & $126\,861\,499.80\pm269\,199\,499.94$ \\
-FD002 & regime & fedadam & 2 & $78.84\pm23.07$ & $202\,089\,088.31\pm429\,940\,704.72$ \\
-FD002 & regime & federated\_asymmetric & 1 & $26.85\pm0.69$ & $1\,559.59\pm141.17$ \\
-FD002 & regime & federated\_asymmetric & 2 & $27.88\pm0.74$ & $2\,544.79\pm408.81$ \\
-FD002 & regime & asymmetric & 1 & $25.18\pm1.16$ & $1\,479.20\pm74.43$ \\
-FD002 & regime & asymmetric & 2 & $25.96\pm1.08$ & $2\,529.80\pm364.81$ \\
-FD002 & regime & cnn\_lstm & 1 & $41.43\pm0.02$ & $10\,189.80\pm121.04$ \\
-FD002 & regime & cnn\_lstm & 2 & $44.40\pm0.02$ & $15\,123.95\pm173.50$ \\
-FD004 & regime & centralized & 1 & $20.61\pm0.55$ & $825.25\pm102.61$ \\
-FD004 & regime & centralized & 2 & $25.18\pm0.68$ & $3\,503.76\pm1\,560.42$ \\
-FD004 & regime & local\_only & 1 & $23.85\pm0.68$ & $1\,160.84\pm191.71$ \\
-FD004 & regime & local\_only & 2 & $28.75\pm1.04$ & $6\,845.68\pm2\,061.46$ \\
-FD004 & regime & fedavg & 1 & $23.55\pm0.29$ & $1\,186.92\pm64.29$ \\
-FD004 & regime & fedavg & 2 & $28.81\pm0.25$ & $6\,467.90\pm642.30$ \\
-FD004 & regime & fedprox & 1 & $23.73\pm1.01$ & $1\,192.59\pm184.98$ \\
-FD004 & regime & fedprox & 2 & $28.88\pm0.74$ & $6\,445.88\pm1\,328.91$ \\
-FD004 & regime & fedadam & 1 & $58.99\pm16.31$ & $4\,860\,573.40\pm9\,971\,441.12$ \\
-FD004 & regime & fedadam & 2 & $54.89\pm15.80$ & $4\,135\,558.69\pm8\,476\,173.80$ \\
-FD004 & regime & federated\_asymmetric & 1 & $28.12\pm0.40$ & $1\,700.15\pm77.67$ \\
-FD004 & regime & federated\_asymmetric & 2 & $30.83\pm0.36$ & $4\,812.98\pm260.78$ \\
-FD004 & regime & asymmetric & 1 & $28.19\pm0.94$ & $1\,820.55\pm628.55$ \\
-FD004 & regime & asymmetric & 2 & $31.12\pm0.77$ & $5\,423.42\pm2\,966.02$ \\
-FD004 & regime & cnn\_lstm & 1 & $44.24\pm0.01$ & $23\,522.60\pm361.45$ \\
-FD004 & regime & cnn\_lstm & 2 & $42.12\pm0.00$ & $20\,447.51\pm290.64$ \\
+FD002 & regime & Centralized & 1 & $21.78\pm1.12$ & $1\,824.32\pm867.07$ \\
+FD002 & regime & Centralized & 2 & $21.21\pm1.23$ & $3\,938.47\pm1\,313.34$ \\
+FD002 & regime & Local only & 1 & $23.51\pm0.43$ & $1\,811.16\pm587.92$ \\
+FD002 & regime & Local only & 2 & $22.67\pm0.59$ & $3\,221.86\pm1\,129.69$ \\
+FD002 & regime & FedAvg & 1 & $23.61\pm0.67$ & $1\,594.57\pm502.96$ \\
+FD002 & regime & FedAvg & 2 & $23.41\pm0.60$ & $2\,830.80\pm870.10$ \\
+FD002 & regime & FedProx & 1 & $23.35\pm0.58$ & $1\,589.67\pm474.67$ \\
+FD002 & regime & FedProx & 2 & $23.26\pm0.41$ & $2\,992.23\pm862.77$ \\
+FD002 & regime & FedAdam & 1 & $77.42\pm23.30$ & $1.27\times10^{8}\pm2.69\times10^{8}$ \\
+FD002 & regime & FedAdam & 2 & $78.84\pm23.07$ & $2.02\times10^{8}\pm4.30\times10^{8}$ \\
+FD002 & regime & FedAvg + exp. & 1 & $26.85\pm0.69$ & $1\,559.59\pm141.17$ \\
+FD002 & regime & FedAvg + exp. & 2 & $27.88\pm0.74$ & $2\,544.79\pm408.81$ \\
+FD002 & regime & Central + exp. & 1 & $25.18\pm1.16$ & $1\,479.20\pm74.43$ \\
+FD002 & regime & Central + exp. & 2 & $25.96\pm1.08$ & $2\,529.80\pm364.81$ \\
+FD002 & regime & CNN-LSTM & 1 & $41.43\pm0.02$ & $10\,189.80\pm121.04$ \\
+FD002 & regime & CNN-LSTM & 2 & $44.40\pm0.02$ & $15\,123.95\pm173.50$ \\
+FD004 & regime & Centralized & 1 & $20.61\pm0.55$ & $825.25\pm102.61$ \\
+FD004 & regime & Centralized & 2 & $25.18\pm0.68$ & $3\,503.76\pm1\,560.42$ \\
+FD004 & regime & Local only & 1 & $23.85\pm0.68$ & $1\,160.84\pm191.71$ \\
+FD004 & regime & Local only & 2 & $28.75\pm1.04$ & $6\,845.68\pm2\,061.46$ \\
+FD004 & regime & FedAvg & 1 & $23.55\pm0.29$ & $1\,186.92\pm64.29$ \\
+FD004 & regime & FedAvg & 2 & $28.81\pm0.25$ & $6\,467.90\pm642.30$ \\
+FD004 & regime & FedProx & 1 & $23.73\pm1.01$ & $1\,192.59\pm184.98$ \\
+FD004 & regime & FedProx & 2 & $28.88\pm0.74$ & $6\,445.88\pm1\,328.91$ \\
+FD004 & regime & FedAdam & 1 & $58.99\pm16.31$ & $4.86\times10^{6}\pm9.97\times10^{6}$ \\
+FD004 & regime & FedAdam & 2 & $54.89\pm15.80$ & $4.14\times10^{6}\pm8.48\times10^{6}$ \\
+FD004 & regime & FedAvg + exp. & 1 & $28.12\pm0.40$ & $1\,700.15\pm77.67$ \\
+FD004 & regime & FedAvg + exp. & 2 & $30.83\pm0.36$ & $4\,812.98\pm260.78$ \\
+FD004 & regime & Central + exp. & 1 & $28.19\pm0.94$ & $1\,820.55\pm628.55$ \\
+FD004 & regime & Central + exp. & 2 & $31.12\pm0.77$ & $5\,423.42\pm2\,966.02$ \\
+FD004 & regime & CNN-LSTM & 1 & $44.24\pm0.01$ & $23\,522.60\pm361.45$ \\
+FD004 & regime & CNN-LSTM & 2 & $42.12\pm0.00$ & $20\,447.51\pm290.64$ \\
 \bottomrule
 \end{tabular}
