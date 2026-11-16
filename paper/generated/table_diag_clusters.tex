@@ -1,0 +1,29 @@
+\begin{tabular}{@{}llrr@{}}
+\toprule
+View & Metric & FD003 & FD004 \\
+\midrule
+Units & train / test ($y\le30$) & 100 / 20 & 249 / 53 \\
+HPC ref. & label-free & FD001 & FD002 \\
+\midrule
+Drift & silhouette & $0.51$ & $0.49$ \\
+ & cross-seed ARI & $1.00$ & $0.99\pm0.01$ \\
+ & KMeans vs.\ GMM ARI & $0.93$ & $0.93\pm0.01$ \\
+ & fan-cand.\ fraction (\%) & $45.8$ & $39.0\pm0.1$ \\
+ & cos.\ to ref.\ (HPC-l.\,/\,cand.) & $0.98$ / $0.02$ & $1.00$ / $0.43$ \\
+\midrule
+Attribution & silhouette & $0.55\pm0.08$ & $0.39\pm0.09$ \\
+ & cross-seed ARI & $1.00$ & $0.70\pm0.31$ \\
+ & KMeans vs.\ GMM ARI & $1.00$ & $0.91\pm0.12$ \\
+ & fan-cand.\ fraction (\%) & $47.5$ & $53.7\pm6.6$ \\
+ & cos.\ to ref.\ (HPC-l.\,/\,cand.) & $0.98$ / $0.02$ & $0.86$ / $0.59$ \\
+\midrule
+Combined & silhouette & $0.52\pm0.04$ & $0.39\pm0.02$ \\
+ & cross-seed ARI & $1.00$ & $0.79\pm0.14$ \\
+ & KMeans vs.\ GMM ARI & $1.00$ & $0.71\pm0.15$ \\
+ & fan-cand.\ fraction (\%) & $47.5$ & $51.3\pm2.1$ \\
+ & cos.\ to ref.\ (HPC-l.\,/\,cand.) & $0.98$ / $0.02$ & $0.92$ / $0.55$ \\
+\midrule
+Drift vs.\ attr. & cross-view ARI & $0.93$ & $0.37\pm0.11$ \\
+Model & test RMSE (cycles) & $17.46\pm2.68$ & $26.44\pm4.79$ \\
+\bottomrule
+\end{tabular}

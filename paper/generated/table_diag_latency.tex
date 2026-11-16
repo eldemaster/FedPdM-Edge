@@ -1,0 +1,14 @@
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+Per window (ms) & FD001 & FD002 & FD003 & FD004 \\
+\midrule
+Inference only & $0.051$ & $0.066$ & $0.060$ & $0.057$ \\
++ attribution + summary & $0.219$ & $0.328$ & $0.274$ & $0.245$ \\
++ drift + attribution + summary & $0.491$ & $0.932$ & $0.647$ & $0.590$ \\
+Full / inference ratio & $9.6\times$ & $14.0\times$ & $10.8\times$ & $10.4\times$ \\
+\midrule
+Autograd saved bytes & \multicolumn{4}{r}{$117\,368$} \\
+Input window bytes & \multicolumn{4}{r}{$2\,040$} \\
+Socket calls / raw bytes sent & \multicolumn{4}{r}{$0$ / $0$} \\
+\bottomrule
+\end{tabular}

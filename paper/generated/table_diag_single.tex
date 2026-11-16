@@ -1,0 +1,20 @@
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Low-RUL windows ($y<30$) & FD001 & FD002 & Chance \\
+\midrule
+Windows per seed & $907$ & $2\,586$ & --- \\
+\multicolumn{4}{l}{\emph{Attribution, $(\mathbf{x}-\mathbf{b})\odot\nabla$ (\%)}} \\
+\quad primary $=$ HPC & $26.6\pm5.5$ & $59.6\pm5.0$ & $35.7$ \\
+\quad primary $\in$ core & $99.4\pm0.8$ & $100.0$ & $71.4$ \\
+\quad top-3 sensors in core & $94.9\pm5.1$ & $73.3\pm1.7$ & $71.4$ \\
+\multicolumn{4}{l}{\emph{Plain saliency, $|\nabla|$ (\%)}} \\
+\quad primary $=$ HPC & $0.8\pm1.5$ & $1.4\pm3.0$ & $35.7$ \\
+\quad primary $\in$ core & $98.7\pm2.1$ & $100.0$ & $71.4$ \\
+\multicolumn{4}{l}{\emph{Model-free drift (\%)}} \\
+\quad primary $=$ HPC & $45.8\pm6.3$ & $73.2\pm2.1$ & $35.7$ \\
+\quad primary $=$ Fan & $49.2\pm6.5$ & $3.5\pm0.4$ & $21.4$ \\
+\quad top-3 sensors in core & $82.0\pm1.7$ & $76.7\pm0.6$ & $71.4$ \\
+\midrule
+Test RMSE (cycles) & $16.80\pm1.42$ & $23.74\pm3.08$ & --- \\
+\bottomrule
+\end{tabular}
