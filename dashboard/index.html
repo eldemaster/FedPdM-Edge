@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FedPdM-Edge · Industrial Federated Predictive Maintenance</title>
+  <style>
+    :root {
+      --bg: #0b111b;
+      --surface: #121a28;
+      --surface-2: #182336;
+      --border: #25344d;
+      --text: #e6edf7;
+      --muted: #93a4be;
+      --accent: #38bdf8;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+      --danger: #ef4444;
+      --purple: #a78bfa;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Inter, sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top right, #132238 0%, var(--bg) 55%);
+      color: var(--text);
+      font-family: var(--sans);
+      line-height: 1.45;
+    }
+    .container { max-width: 1320px; margin: 0 auto; padding: 20px 24px 48px; }
+    .topbar {
+      display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between;
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+      padding: 16px 20px; margin-bottom: 18px;
+    }
+    .brand h1 { margin: 0; font-size: 1.35rem; letter-spacing: -0.01em; display: flex; align-items: center; gap: 10px; }
+    .badge {
+      font-size: 0.72rem; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+      background: rgba(56, 189, 248, 0.14); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35);
+    }
+    .subtitle { margin: 4px 0 0; font-size: 0.86rem; color: var(--muted); }
+    .controls-row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+    select, button {
+      font-family: var(--sans); font-size: 0.85rem; border-radius: 9px; border: 1px solid var(--border);
+      background: var(--surface-2); color: var(--text); padding: 8px 12px; cursor: pointer;
+    }
+    button.primary {
+      background: linear-gradient(135deg, #0284c7, #2563eb); border-color: #38bdf8; font-weight: 600;
+    }
+    button:hover, select:hover { border-color: var(--accent); }
+    .tabs { display: flex; gap: 8px; margin-bottom: 18px; flex-wrap: wrap; }
+    .tab-btn {
+      padding: 10px 16px; border-radius: 10px; font-weight: 600; background: var(--surface);
+      border: 1px solid var(--border); color: var(--muted);
+    }
+    .tab-btn.active {
+      background: rgba(56, 189, 248, 0.15); color: var(--accent); border-color: var(--accent);
+    }
+    .grid-4 { display: grid; grid-template-columns: repeat(auto-fit, minmax(225px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    .grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 16px; margin-bottom: 18px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 14px; margin-bottom: 18px; }
+    @media (max-width: 560px) { .grid-2 { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px;
+    }
+    .card-title { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); margin-bottom: 6px; }
+    .kpi-value { font-size: 1.95rem; font-weight: 700; font-family: var(--mono); line-height: 1.15; }
+    .kpi-sub { font-size: 0.82rem; color: var(--muted); margin-top: 6px; }
+    .pill {
+      display: inline-block; padding: 3px 9px; border-radius: 999px; font-size: 0.75rem; font-weight: 600;
+    }
+    .pill-ok { background: rgba(34, 197, 94, 0.15); color: var(--ok); border: 1px solid rgba(34, 197, 94, 0.4); }
+    .pill-warn { background: rgba(245, 158, 11, 0.15); color: var(--warn); border: 1px solid rgba(245, 158, 11, 0.4); }
+    .pill-danger { background: rgba(239, 68, 68, 0.16); color: var(--danger); border: 1px solid rgba(239, 68, 68, 0.45); }
+    .pill-info { background: rgba(56, 189, 248, 0.14); color: var(--accent); border: 1px solid rgba(56, 189, 248, 0.35); }
+    .toolbar {
+      display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 14px 18px;
+    }
+    .slider-wrap { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 260px; }
+    input[type="range"] { flex: 1; accent-color: var(--accent); cursor: pointer; }
+    .chart-box { width: 100%; overflow: hidden; }
+    svg { width: 100%; height: auto; display: block; }
+    .legend { display: flex; flex-wrap: wrap; gap: 14px; font-size: 0.8rem; color: var(--muted); margin-top: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+    .node-flow {
+      display: grid; grid-template-columns: 1fr auto 1fr; gap: 14px; align-items: center; margin-bottom: 18px;
+    }
+    @media (max-width: 820px) { .node-flow { grid-template-columns: 1fr; } }
+    .pipe-box {
+      text-align: center; padding: 12px 14px; border-radius: 12px; border: 1px dashed var(--accent);
+      background: rgba(56, 189, 248, 0.06); font-size: 0.82rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: 0.86rem; }
+    th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--border); }
+    th { color: var(--muted); font-weight: 600; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.04em; }
+    td.num, th.num { text-align: right; font-family: var(--mono); }
+    .note-box {
+      margin-top: 14px; padding: 12px 16px; border-radius: 10px; font-size: 0.84rem;
+      background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.3); color: #d8cdfc;
+    }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <header class="topbar">
+    <div class="brand">
+      <h1>
+        <span>FedPdM-Edge</span>
+        <span class="badge">Interreg Aurora · ResilientEdge 20373282</span>
+      </h1>
+      <p class="subtitle" id="subtitleText"></p>
+    </div>
+    <div class="controls-row">
+      <label style="font-size:0.8rem;color:var(--muted)" id="scaleLabel"></label>
+      <select id="hoursSelect">
+        <option value="0" data-it="Solo cicli" data-en="Cycles only">Solo cicli</option>
+        <option value="0.5">1 ciclo = 0.5 h</option>
+        <option value="1" selected>1 ciclo = 1.0 h</option>
+        <option value="2">1 ciclo = 2.0 h</option>
+        <option value="4">1 ciclo = 4.0 h</option>
+      </select>
+      <button id="langBtn" onclick="toggleLang()">EN</button>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="asset" onclick="switchTab('asset')" id="tabAssetBtn"></button>
+    <button class="tab-btn" data-tab="cluster" onclick="switchTab('cluster')" id="tabClusterBtn"></button>
+    <button class="tab-btn" data-tab="business" onclick="switchTab('business')" id="tabBusinessBtn"></button>
+  </nav>
+
+  <!-- TAB 1: LIVE ASSET RUL -->
+  <section id="tab-asset">
+    <div class="toolbar">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <strong style="font-size:0.86rem" id="assetSelectLabel"></strong>
+        <select id="engineSelect" onchange="onEngineChange()"></select>
+        <span id="stageBadge" class="pill"></span>
+      </div>
+      <div class="slider-wrap">
+        <button class="primary" id="playAssetBtn" onclick="togglePlayAsset()">Play</button>
+        <input type="range" id="cycleSlider" min="0" max="100" value="0" oninput="onSliderMove()" />
+        <span style="font-family:var(--mono);font-size:0.85rem;min-width:110px;text-align:right" id="cycleReadout"></span>
+      </div>
+    </div>
+
+    <div class="grid-4">
+      <div class="card">
+        <div class="card-title" id="kpiSafeTitle"></div>
+        <div class="kpi-value" style="color:var(--accent)" id="kpiSafeVal">-</div>
+        <div class="kpi-sub" id="kpiSafeSub"></div>
+      </div>
+      <div class="card">
+        <div class="card-title" id="kpiStatusTitle"></div>
+        <div class="kpi-value" id="kpiStatusVal">-</div>
+        <div class="kpi-sub" id="kpiStatusSub"></div>
+      </div>
+      <div class="card">
+        <div class="card-title" id="kpiMseTitle"></div>
+        <div class="kpi-value" style="color:var(--purple)" id="kpiMseVal">-</div>
+        <div class="kpi-sub" id="kpiMseSub"></div>
+      </div>
+      <div class="card">
+        <div class="card-title" id="kpiLocalTitle"></div>
+        <div class="kpi-value" style="color:var(--warn)" id="kpiLocalVal">-</div>
+        <div class="kpi-sub" id="kpiLocalSub"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong id="rulChartTitle"></strong>
+          <span class="pill pill-info" id="trueRulNow"></span>
+        </div>
+        <div class="chart-box" id="rulChart"></div>
+        <div class="legend" id="rulLegend"></div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+          <strong id="sensorChartTitle"></strong>
+          <span class="pill pill-ok" id="privacyLockBadge"></span>
+        </div>
+        <div class="chart-box" id="sensorChart"></div>
+        <div class="legend">
+          <span class="legend-item"><span class="dot" style="background:#38bdf8"></span>s2 (LPC Temp)</span>
+          <span class="legend-item"><span class="dot" style="background:#a78bfa"></span>s3 (HPC Temp)</span>
+          <span class="legend-item"><span class="dot" style="background:#f59e0b"></span>s4 (LPT Temp)</span>
+          <span class="legend-item"><span class="dot" style="background:#22c55e"></span>s11 (Static Press.)</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 2: FEDERATED CLUSTER -->
+  <section id="tab-cluster" class="hidden">
+    <div class="toolbar">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <strong style="font-size:0.86rem" id="runSelectLabel"></strong>
+        <select id="clusterRunSelect" onchange="onClusterRunChange()"></select>
+      </div>
+      <div class="slider-wrap">
+        <button class="primary" id="playRoundBtn" onclick="togglePlayRound()">Play Rounds</button>
+        <input type="range" id="roundSlider" min="0" max="5" value="5" oninput="renderCluster()" />
+        <span style="font-family:var(--mono);font-size:0.85rem;min-width:105px;text-align:right" id="roundReadout"></span>
+      </div>
+    </div>
+
+    <div class="node-flow">
+      <div class="card">
+        <div class="card-title">Edge Node 1 · Plant A (Raspberry Pi 4)</div>
+        <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px" id="node1Status">-</div>
+        <div class="kpi-sub" id="node1Metrics"></div>
+      </div>
+      <div class="pipe-box">
+        <div style="font-weight:700;color:var(--accent)" id="coordTitle"></div>
+        <div id="pipeInfo" style="margin:6px 0;font-family:var(--mono)"></div>
+        <span class="pill pill-ok" id="zeroRawBadge"></span>
+      </div>
+      <div class="card">
+        <div class="card-title">Edge Node 2 · Plant B (Raspberry Pi 4)</div>
+        <div style="font-weight:700;font-size:1.05rem;margin-bottom:4px" id="node2Status">-</div>
+        <div class="kpi-sub" id="node2Metrics"></div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="card">
+        <strong id="roundRmseTitle"></strong>
+        <div class="chart-box" id="roundRmseChart" style="margin-top:10px"></div>
+      </div>
+      <div class="card">
+        <strong id="roundNasaTitle"></strong>
+        <div class="chart-box" id="roundNasaChart" style="margin-top:10px"></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- TAB 3: BUSINESS & SAFETY IMPACT -->
+  <section id="tab-business" class="hidden">
+    <div class="grid-3" id="businessCards"></div>
+    <div class="grid-2">
+      <div class="card">
+        <strong id="asymTableTitle"></strong>
+        <p class="kpi-sub" id="asymTableSub" style="margin-bottom:10px"></p>
+        <div style="overflow-x:auto">
+          <table id="asymTable"></table>
+        </div>
+      </div>
+      <div class="card">
+        <strong id="imbalanceTableTitle"></strong>
+        <p class="kpi-sub" id="imbalanceTableSub" style="margin-bottom:10px"></p>
+        <div style="overflow-x:auto">
+          <table id="imbalanceTable"></table>
+        </div>
+      </div>
+    </div>
+    <div class="note-box" id="engineeringNote"></div>
+  </section>
+</div>
+
+<script>
+let DATA = null;
+let LANG = "it";
+let ASSET_TIMER = null;
+let ROUND_TIMER = null;
+
+const I18N = {
+  it: {
+    subtitle: "Manutenzione predittiva federata su nodi Edge: stima RUL in tempo reale senza esportare i dati grezzi dalla fabbrica",
+    scaleLabel: "Scala operativa:",
+    tabAsset: "1. RUL Asset Live (Quanto manca al guasto?)",
+    tabCluster: "2. Cluster Federato (2x RPi4 + Hub)",
+    tabBusiness: "3. Sicurezza & Impatto Aziendale",
+    assetSelect: "Macchinario (Held-out Test):",
+    kpiSafeTitle: "RUL Stimata (FedAvg Safe / Asym)",
+    kpiMseTitle: "RUL FedAvg Standard (MSE)",
+    kpiLocalTitle: "Solo Dati Locali (Senza Federazione)",
+    kpiStatusTitle: "Stato & Margine di Sicurezza",
+    rulChartTitle: "Traiettoria Degrado RUL (Ciclo per Ciclo)",
+    sensorChartTitle: "Telemetria Sensori in Fabbrica (Finestra W=30)",
+    privacyLock: "🔒 Dati grezzi bloccati su RPi · 0 byte al cloud",
+    runSelect: "Sessione Federata:",
+    coordTitle: "Coordinatore Hub (Ubuntu Server)",
+    zeroRaw: "0 byte telemetria · solo pesi (178.2 KB A/R)",
+    roundRmseTitle: "Convergenza Errore RUL (RMSE per Round)",
+    roundNasaTitle: "Riduzione Rischio Industriale (NASA Asymmetric Score)",
+    asymTableTitle: "Sicurezza: MSE vs AsymmetricRULLoss (5 seed)",
+    asymTableSub: "Penalizzare i ritardi taglia le mancate previsioni di guasto (~50–64% → ~20–34%).",
+    imbalanceTableTitle: "Valore della Federazione per PMI (FD002 Engine Imbalance)",
+    imbalanceTableSub: "Uno stabilimento piccolo da solo ha errore alto (38.13 RMSE); federandosi raggiunge 22.21 senza cedere i dati.",
+    note: "Nota ingegneristica (PoC): i dati mostrati usano il benchmark pubblico NASA C-MAPSS (FD001–FD004) su modello PyTorch 1D-CNN (22,273 parametri, 89.1 KB per tensore / 178.2 KB andata+ritorno per round). Per il deployment produttivo in stabilimento vanno abilitati TLS/mTLS sui canali gRPC Flower, aggregazione cifrata/DP e calibrazione sui sensori reali del cliente.",
+    cycleFmt: (c, tot) => `Ciclo ${c} / ${tot}`,
+    trueNowFmt: (v) => `RUL Reale: ${fmtHorizon(v)}`,
+    ok: "OPERATIVO",
+    warn: "PRE-ALLARME",
+    crit: "FERMO PROGRAMMATO",
+    earlyMargin: (d) => `Anticipo sicuro: ${Math.abs(d).toFixed(1)} cicli prima del reale`,
+    lateRisk: (d) => `⚠ Ritardo pericoloso: +${d.toFixed(1)} cicli oltre il reale`,
+    vsTrue: (pred, truth) => {
+      const diff = pred - truth;
+      return diff <= 0
+        ? `Anticipo sicuro (${Math.abs(diff).toFixed(1)} cicli)`
+        : `⚠ Ritardo di +${diff.toFixed(1)} cicli`;
+    },
+    stages: { critical: "Critico (<20 cicli)", warning: "Attenzione (22-48)", midlife: "Vita Media", healthy: "Sano" },
+  },
+  en: {
+    subtitle: "Federated predictive maintenance at the Edge: real-time RUL estimation without raw factory telemetry leaving the plant",
+    scaleLabel: "Duty scale:",
+    tabAsset: "1. Live Asset RUL (Time to Failure)",
+    tabCluster: "2. Federated Cluster (2x RPi4 + Hub)",
+    tabBusiness: "3. Safety & Business Impact",
+    assetSelect: "Asset (Held-out Test):",
+    kpiSafeTitle: "Estimated RUL (FedAvg Safe / Asym)",
+    kpiMseTitle: "Standard FedAvg (MSE)",
+    kpiLocalTitle: "Isolated Local Only (No FL)",
+    kpiStatusTitle: "Operational Status & Safety Margin",
+    rulChartTitle: "Cycle-by-Cycle RUL Degradation Trajectory",
+    sensorChartTitle: "Plant Sensor Telemetry (Window W=30)",
+    privacyLock: "🔒 Raw telemetry stays on RPi · 0 bytes exported",
+    runSelect: "Federated Run:",
+    coordTitle: "Swarm Coordinator Hub (Ubuntu Server)",
+    zeroRaw: "0 bytes raw telemetry · weights only (178.2 KB DL+UL)",
+    roundRmseTitle: "RUL Error Convergence (RMSE per Round)",
+    roundNasaTitle: "Catastrophic Risk Reduction (NASA Asymmetric Score)",
+    asymTableTitle: "Safety: MSE vs AsymmetricRULLoss (5 seeds)",
+    asymTableSub: "Penalizing late alerts cuts dangerous late-failure predictions roughly in half (50–64% → 20–34%).",
+    imbalanceTableTitle: "Value of Federation for Smaller Plants (FD002 Imbalance)",
+    imbalanceTableSub: "A data-scarce plant drops from 38.13 RMSE (isolated) to 22.21 RMSE (federated) without sharing raw logs.",
+    note: "Engineering scope note: benchmark trajectories use the public NASA C-MAPSS dataset (FD001–FD004) with our 1D-CNN model (22,273 params, 89.1 KB per tensor / 178.2 KB downlink+uplink per round). Production factory rollout adds gRPC TLS/mTLS, secure aggregation/DP, and client sensor calibration.",
+    cycleFmt: (c, tot) => `Cycle ${c} / ${tot}`,
+    trueNowFmt: (v) => `True RUL: ${fmtHorizon(v)}`,
+    ok: "HEALTHY",
+    warn: "WARNING",
+    crit: "CRITICAL ACTION",
+    earlyMargin: (d) => `Safe lead margin: ${Math.abs(d).toFixed(1)} cycles early`,
+    lateRisk: (d) => `⚠ Late alert risk: +${d.toFixed(1)} cycles too late`,
+    vsTrue: (pred, truth) => {
+      const diff = pred - truth;
+      return diff <= 0
+        ? `Early margin (${Math.abs(diff).toFixed(1)} cyc)`
+        : `⚠ Late by +${diff.toFixed(1)} cyc`;
+    },
+    stages: { critical: "Critical (<20 cyc)", warning: "Warning (22-48)", midlife: "Mid-life", healthy: "Healthy" },
+  }
+};
+
+function t() { return I18N[LANG]; }
+
+function fmtHorizon(cycles) {
+  const mult = parseFloat(document.getElementById("hoursSelect").value);
+  const cStr = `${cycles.toFixed(1)} ${LANG === "it" ? "cicli" : "cyc"}`;
+  if (!mult) return cStr;
+  return `${cStr} (~${(cycles * mult).toFixed(1)} h)`;
+}
+
+function toggleLang() {
+  LANG = LANG === "it" ? "en" : "it";
+  document.getElementById("langBtn").textContent = LANG === "it" ? "EN" : "IT";
+  applyLabels();
+  renderAll();
+}
+
+function switchTab(name) {
+  ["asset", "cluster", "business"].forEach(k => {
+    document.getElementById(`tab-${k}`).classList.toggle("hidden", k !== name);
+    document.querySelector(`[data-tab="${k}"]`).classList.toggle("active", k === name);
+  });
+}
+
+function applyLabels() {
+  const s = t();
+  document.getElementById("subtitleText").textContent = s.subtitle;
+  document.getElementById("scaleLabel").textContent = s.scaleLabel;
+  document.getElementById("tabAssetBtn").textContent = s.tabAsset;
+  document.getElementById("tabClusterBtn").textContent = s.tabCluster;
+  document.getElementById("tabBusinessBtn").textContent = s.tabBusiness;
+  document.getElementById("assetSelectLabel").textContent = s.assetSelect;
+  document.getElementById("kpiSafeTitle").textContent = s.kpiSafeTitle;
+  document.getElementById("kpiMseTitle").textContent = s.kpiMseTitle;
+  document.getElementById("kpiLocalTitle").textContent = s.kpiLocalTitle;
+  document.getElementById("kpiStatusTitle").textContent = s.kpiStatusTitle;
+  document.getElementById("rulChartTitle").textContent = s.rulChartTitle;
+  document.getElementById("sensorChartTitle").textContent = s.sensorChartTitle;
+  document.getElementById("privacyLockBadge").textContent = s.privacyLock;
+  document.getElementById("runSelectLabel").textContent = s.runSelect;
+  document.getElementById("coordTitle").textContent = s.coordTitle;
+  document.getElementById("zeroRawBadge").textContent = s.zeroRaw;
+  document.getElementById("roundRmseTitle").textContent = s.roundRmseTitle;
+  document.getElementById("roundNasaTitle").textContent = s.roundNasaTitle;
+  document.getElementById("asymTableTitle").textContent = s.asymTableTitle;
+  document.getElementById("asymTableSub").textContent = s.asymTableSub;
+  document.getElementById("imbalanceTableTitle").textContent = s.imbalanceTableTitle;
+  document.getElementById("imbalanceTableSub").textContent = s.imbalanceTableSub;
+  document.getElementById("engineeringNote").textContent = s.note;
+  const zeroOpt = document.querySelector('#hoursSelect option[value="0"]');
+  zeroOpt.textContent = LANG === "it" ? "Solo cicli" : "Cycles only";
+
+  // Refresh engine dropdown labels cleanly preserving index
+  const sel = document.getElementById("engineSelect");
+  const curIdx = sel.selectedIndex >= 0 ? sel.selectedIndex : 0;
+  sel.innerHTML = "";
+  DATA.engines.forEach((e, idx) => {
+    const opt = document.createElement("option");
+    opt.value = idx;
+    opt.textContent = `${e.id} — ${s.stages[e.stage] || e.stage} (End RUL: ${e.final_true_rul})`;
+    sel.appendChild(opt);
+  });
+  sel.selectedIndex = curIdx;
+}
+
+function currentEngine() {
+  const idx = parseInt(document.getElementById("engineSelect").value || "0", 10);
+  return DATA.engines[idx];
+}
+
+function onEngineChange() {
+  stopPlayAsset();
+  const e = currentEngine();
+  const slider = document.getElementById("cycleSlider");
+  slider.max = e.cycles.length - 1;
+  slider.value = e.cycles.length - 1;
+  renderAsset();
+}
+
+function onSliderMove() {
+  renderAsset();
+}
+
+function togglePlayAsset() {
+  if (ASSET_TIMER) { stopPlayAsset(); return; }
+  const slider = document.getElementById("cycleSlider");
+  if (parseInt(slider.value, 10) >= parseInt(slider.max, 10)) slider.value = 0;
+  document.getElementById("playAssetBtn").textContent = "Pause";
+  ASSET_TIMER = setInterval(() => {
+    const v = parseInt(slider.value, 10);
+    if (v >= parseInt(slider.max, 10)) { stopPlayAsset(); return; }
+    slider.value = v + 1;
+    renderAsset();
+  }, 90);
+}
+
+function stopPlayAsset() {
+  if (ASSET_TIMER) { clearInterval(ASSET_TIMER); ASSET_TIMER = null; }
+  document.getElementById("playAssetBtn").textContent = "Play";
+}
+
+function renderAsset() {
+  const e = currentEngine();
+  const i = parseInt(document.getElementById("cycleSlider").value, 10);
+  const s = t();
+
+  const cyc = e.cycles[i];
+  const truth = e.true_rul[i];
+  const pSafe = e.pred_fedavg_asym[i];
+  const pMse = e.pred_fedavg_mse[i];
+  const pLoc = e.pred_local_mse[i];
+
+  document.getElementById("cycleReadout").textContent = s.cycleFmt(cyc, e.total_observed_cycles);
+  document.getElementById("trueRulNow").textContent = s.trueNowFmt(truth);
+
+  const stagePill = document.getElementById("stageBadge");
+  stagePill.textContent = s.stages[e.stage] || e.stage;
+  stagePill.className = "pill " + (e.stage === "critical" ? "pill-danger" : e.stage === "warning" ? "pill-warn" : "pill-ok");
+
+  document.getElementById("kpiSafeVal").textContent = fmtHorizon(pSafe);
+  document.getElementById("kpiSafeSub").textContent = s.vsTrue(pSafe, truth);
+
+  document.getElementById("kpiMseVal").textContent = fmtHorizon(pMse);
+  document.getElementById("kpiMseSub").textContent = s.vsTrue(pMse, truth);
+
+  document.getElementById("kpiLocalVal").textContent = fmtHorizon(pLoc);
+  document.getElementById("kpiLocalSub").textContent = s.vsTrue(pLoc, truth);
+
+  const statusEl = document.getElementById("kpiStatusVal");
+  if (pSafe <= 20) {
+    statusEl.textContent = s.crit; statusEl.style.color = "var(--danger)";
+  } else if (pSafe <= 45) {
+    statusEl.textContent = s.warn; statusEl.style.color = "var(--warn)";
+  } else {
+    statusEl.textContent = s.ok; statusEl.style.color = "var(--ok)";
+  }
+  const delta = pSafe - truth;
+  document.getElementById("kpiStatusSub").textContent = delta <= 0 ? s.earlyMargin(delta) : s.lateRisk(delta);
+
+  drawRulChart(e, i);
+  drawSensorChart(e, i);
+}
+
+function drawRulChart(e, curIdx) {
+  const W = 620, H = 290, padL = 44, padR = 16, padT = 16, padB = 30;
+  const n = e.cycles.length;
+  const xMin = e.cycles[0], xMax = e.cycles[n - 1];
+  const sx = (c) => padL + ((c - xMin) / Math.max(1, xMax - xMin)) * (W - padL - padR);
+  const sy = (v) => padT + (1 - Math.min(125, Math.max(0, v)) / 125) * (H - padT - padB);
+
+  const pathFor = (arr) => arr.slice(0, curIdx + 1)
+    .map((v, k) => `${k === 0 ? "M" : "L"}${sx(e.cycles[k]).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
+
+  const fullPathFor = (arr) => arr
+    .map((v, k) => `${k === 0 ? "M" : "L"}${sx(e.cycles[k]).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
+
+  const curX = sx(e.cycles[curIdx]).toFixed(1);
+  const y20 = sy(20).toFixed(1);
+  const yBase = (H - padB).toFixed(1);
+
+  let grid = "";
+  [0, 20, 50, 100, 125].forEach(v => {
+    const y = sy(v).toFixed(1);
+    grid += `<line x1="${padL}" y1="${y}" x2="${W-padR}" y2="${y}" stroke="#25344d" stroke-dasharray="3,3"/>`;
+    grid += `<text x="${padL-6}" y="${parseFloat(y)+4}" fill="#93a4be" font-size="10" text-anchor="end">${v}</text>`;
+  });
+
+  document.getElementById("rulChart").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}">
+      <rect x="${padL}" y="${y20}" width="${W-padL-padR}" height="${yBase-y20}" fill="rgba(239,68,68,0.10)"/>
+      ${grid}
+      <path d="${fullPathFor(e.true_rul)}" fill="none" stroke="rgba(230,237,247,0.22)" stroke-width="2" stroke-dasharray="4,4"/>
+      <path d="${pathFor(e.true_rul)}" fill="none" stroke="#e6edf7" stroke-width="2.5"/>
+      <path d="${pathFor(e.pred_local_mse)}" fill="none" stroke="#f59e0b" stroke-width="1.8" opacity="0.85"/>
+      <path d="${pathFor(e.pred_fedavg_mse)}" fill="none" stroke="#a78bfa" stroke-width="2" opacity="0.9"/>
+      <path d="${pathFor(e.pred_fedavg_asym)}" fill="none" stroke="#38bdf8" stroke-width="2.8"/>
+      <line x1="${curX}" y1="${padT}" x2="${curX}" y2="${yBase}" stroke="#38bdf8" stroke-width="1.3" stroke-dasharray="3,2"/>
+      <circle cx="${curX}" cy="${sy(e.pred_fedavg_asym[curIdx]).toFixed(1)}" r="5" fill="#38bdf8" stroke="#0b111b" stroke-width="1.5"/>
+      <circle cx="${curX}" cy="${sy(e.true_rul[curIdx]).toFixed(1)}" r="4.5" fill="#e6edf7"/>
+      <text x="${W-padR}" y="${H-8}" fill="#93a4be" font-size="10" text-anchor="end">Cycle ${xMax}</text>
+      <text x="${padL}" y="${H-8}" fill="#93a4be" font-size="10">Cycle ${xMin}</text>
+    </svg>`;
+
+  document.getElementById("rulLegend").innerHTML = `
+    <span class="legend-item"><span class="dot" style="background:#e6edf7"></span>${LANG==="it"?"RUL Reale":"True RUL"}</span>
+    <span class="legend-item"><span class="dot" style="background:#38bdf8"></span>FedAvg Safe (Asym)</span>
+    <span class="legend-item"><span class="dot" style="background:#a78bfa"></span>FedAvg (MSE)</span>
+    <span class="legend-item"><span class="dot" style="background:#f59e0b"></span>Local Only (MSE)</span>
+    <span class="legend-item"><span class="dot" style="background:rgba(239,68,68,0.45)"></span>${LANG==="it"?"Zona Critica (<20)":"Critical (<20)"}</span>`;
+}
+
+function drawSensorChart(e, curIdx) {
+  const W = 620, H = 290, padL = 40, padR = 16, padT = 16, padB = 30;
+  const n = e.cycles.length;
+  const xMin = e.cycles[0], xMax = e.cycles[n - 1];
+  const sx = (c) => padL + ((c - xMin) / Math.max(1, xMax - xMin)) * (W - padL - padR);
+  const allVals = Object.values(e.sensors).flat();
+  const vMin = Math.min(-0.2, ...allVals), vMax = Math.max(1.2, ...allVals);
+  const sy = (v) => padT + (1 - (v - vMin) / Math.max(0.1, vMax - vMin)) * (H - padT - padB);
+
+  const colors = { s2: "#38bdf8", s3: "#a78bfa", s4: "#f59e0b", s11: "#22c55e" };
+  let paths = "";
+  Object.entries(e.sensors).forEach(([k, arr]) => {
+    const d = arr.slice(0, curIdx + 1)
+      .map((v, idx) => `${idx === 0 ? "M" : "L"}${sx(e.cycles[idx]).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
+    paths += `<path d="${d}" fill="none" stroke="${colors[k]}" stroke-width="2" opacity="0.9"/>`;
+  });
+  const curX = sx(e.cycles[curIdx]).toFixed(1);
+  document.getElementById("sensorChart").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}">
+      <line x1="${padL}" y1="${sy(0).toFixed(1)}" x2="${W-padR}" y2="${sy(0).toFixed(1)}" stroke="#25344d" stroke-dasharray="3,3"/>
+      <line x1="${padL}" y1="${sy(1).toFixed(1)}" x2="${W-padR}" y2="${sy(1).toFixed(1)}" stroke="#25344d" stroke-dasharray="3,3"/>
+      <text x="${padL-6}" y="${sy(1)+4}" fill="#93a4be" font-size="10" text-anchor="end">1.0</text>
+      <text x="${padL-6}" y="${sy(0)+4}" fill="#93a4be" font-size="10" text-anchor="end">0.0</text>
+      ${paths}
+      <line x1="${curX}" y1="${padT}" x2="${curX}" y2="${H-padB}" stroke="#22c55e" stroke-width="1.3" stroke-dasharray="3,2"/>
+      <text x="${W-padR}" y="${H-8}" fill="#93a4be" font-size="10" text-anchor="end">Cycle ${xMax}</text>
+      <text x="${padL}" y="${H-8}" fill="#93a4be" font-size="10">Cycle ${xMin}</text>
+    </svg>`;
+}
+
+// TAB 2: CLUSTER
+function initClusterRuns() {
+  const sel = document.getElementById("clusterRunSelect");
+  sel.innerHTML = "";
+  DATA.cluster.physical_5r.forEach((r, idx) => {
+    const opt = document.createElement("option");
+    opt.value = `phys:${idx}`;
+    opt.textContent = `Physical 2xRPi4 + Ubuntu (FD002, Seed ${r.seed}, 5 rounds)`;
+    sel.appendChild(opt);
+  });
+  if (DATA.cluster.sim_15r_seed42.length) {
+    const opt = document.createElement("option");
+    opt.value = "sim15";
+    opt.textContent = "FD002 Extended Convergence (Seed 42, 15 rounds)";
+    sel.appendChild(opt);
+  }
+  onClusterRunChange();
+}
+
+function getClusterSeries() {
+  const val = document.getElementById("clusterRunSelect").value;
+  if (val === "sim15") return DATA.cluster.sim_15r_seed42;
+  const idx = parseInt(val.split(":")[1] || "0", 10);
+  return DATA.cluster.physical_5r[idx].rounds;
+}
+
+function onClusterRunChange() {
+  stopPlayRound();
+  const series = getClusterSeries();
+  const sl = document.getElementById("roundSlider");
+  sl.min = 0; sl.max = series.length - 1; sl.value = series.length - 1;
+  renderCluster();
+}
+
+function togglePlayRound() {
+  if (ROUND_TIMER) { stopPlayRound(); return; }
+  const sl = document.getElementById("roundSlider");
+  if (parseInt(sl.value, 10) >= parseInt(sl.max, 10)) sl.value = 0;
+  document.getElementById("playRoundBtn").textContent = "Pause";
+  ROUND_TIMER = setInterval(() => {
+    const v = parseInt(sl.value, 10);
+    if (v >= parseInt(sl.max, 10)) { stopPlayRound(); return; }
+    sl.value = v + 1;
+    renderCluster();
+  }, 650);
+}
+
+function stopPlayRound() {
+  if (ROUND_TIMER) { clearInterval(ROUND_TIMER); ROUND_TIMER = null; }
+  document.getElementById("playRoundBtn").textContent = "Play Rounds";
+}
+
+function renderCluster() {
+  const series = getClusterSeries();
+  const idx = parseInt(document.getElementById("roundSlider").value, 10);
+  const pt = series[idx];
+  const oneWayKb = (DATA.model_info.tensor_payload_bytes / 1000).toFixed(1);
+  const roundKb = (DATA.model_info.round_exchange_bytes / 1000).toFixed(1);
+  document.getElementById("roundReadout").textContent = `Round ${pt.round} / ${series[series.length - 1].round}`;
+
+  const isPhys = document.getElementById("clusterRunSelect").value.startsWith("phys:");
+  document.getElementById("node1Status").textContent = pt.round === 0
+    ? (LANG === "it" ? "Inizializzato (in attesa Round 1)" : "Initialized (waiting Round 1)")
+    : (LANG === "it" ? `Round ${pt.round} completato · Pesi inviati` : `Round ${pt.round} synced · Weights uploaded`);
+  document.getElementById("node2Status").textContent = document.getElementById("node1Status").textContent;
+
+  document.getElementById("node1Metrics").textContent = isPhys
+    ? `Client 1 · ~16.7k windows · ${pt.avg_train_s ? pt.avg_train_s + "s avg" : "12.8s/round"} · RSS ${pt.avg_rss_mb || 580} MB`
+    : `Client 1 · Local train complete · ${oneWayKb} KB uplink`;
+  document.getElementById("node2Metrics").textContent = isPhys
+    ? `Client 2 · ~25.0k windows · ${pt.avg_train_s ? pt.avg_train_s + "s avg" : "17.3s/round"} · RSS ${pt.avg_rss_mb || 600} MB`
+    : `Client 2 · Local train complete · ${oneWayKb} KB uplink`;
+
+  document.getElementById("pipeInfo").textContent = `RMSE: ${pt.rmse} · NASA Score: ${Math.round(pt.nasa).toLocaleString()} · ↓↑ ${roundKb} KB`;
+
+  drawRoundChart("roundRmseChart", series, idx, "rmse", "#38bdf8", 43.51);
+  drawRoundChart("roundNasaChart", series, idx, "nasa", "#22c55e", null);
+}
+
+function drawRoundChart(elId, series, curIdx, key, color, baselineVal) {
+  const W = 580, H = 250, padL = 56, padR = 16, padT = 16, padB = 28;
+  const slice = series.slice(0, curIdx + 1);
+  const vals = series.map(p => p[key]);
+  const vMax = Math.max(...vals, baselineVal || 0) * 1.08;
+  const vMin = Math.min(...vals) * 0.85;
+  const sx = (i) => padL + (i / Math.max(1, series.length - 1)) * (W - padL - padR);
+  const sy = (v) => padT + (1 - (v - vMin) / Math.max(1, vMax - vMin)) * (H - padT - padB);
+  const d = slice.map((p, i) => `${i === 0 ? "M" : "L"}${sx(i).toFixed(1)},${sy(p[key]).toFixed(1)}`).join(" ");
+  let baseLine = "";
+  if (baselineVal !== null) {
+    const yb = sy(baselineVal).toFixed(1);
+    baseLine = `<line x1="${padL}" y1="${yb}" x2="${W-padR}" y2="${yb}" stroke="#ef4444" stroke-dasharray="4,4"/><text x="${W-padR}" y="${yb-5}" fill="#ef4444" font-size="10" text-anchor="end">Baseline ${baselineVal}</text>`;
+  }
+  document.getElementById(elId).innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}">
+      ${baseLine}
+      <path d="${d}" fill="none" stroke="${color}" stroke-width="2.8"/>
+      ${slice.map((p, i) => `<circle cx="${sx(i).toFixed(1)}" cy="${sy(p[key]).toFixed(1)}" r="4" fill="${color}"/>`).join("")}
+      <text x="${padL}" y="${padT+10}" fill="#93a4be" font-size="10">${Math.round(vMax).toLocaleString()}</text>
+      <text x="${padL}" y="${H-padB}" fill="#93a4be" font-size="10">${Math.round(vMin).toLocaleString()}</text>
+      <text x="${sx(curIdx).toFixed(1)}" y="${H-8}" fill="${color}" font-size="10" text-anchor="middle">R${series[curIdx].round}: ${series[curIdx][key].toLocaleString()}</text>
+    </svg>`;
+}
+
+// TAB 3: BUSINESS & SAFETY IMPACT
+function renderBusiness() {
+  const asym = DATA.benchmarks.asymmetric;
+  const fd1 = asym.FD001.losses, fd2 = asym.FD002.losses;
+  const cards = [
+    {
+      title: LANG === "it" ? "Taglio Predizioni Tardive (FD001 FedAvg)" : "Late-Failure Alerts Cut (FD001 FedAvg)",
+      val: `${fd1.mse.summary.fedavg.late_rate_pct_mean.toFixed(1)}% → ${fd1.asymmetric.summary.fedavg.late_rate_pct_mean.toFixed(1)}%`,
+      sub: LANG === "it" ? "Quasi dimezzati i guasti segnalati in ritardo grazie ad AsymmetricRULLoss" : "Late alerts roughly cut in half with AsymmetricRULLoss",
+      color: "var(--ok)",
+    },
+    {
+      title: LANG === "it" ? "Riduzione NASA Score (FD002 FedAvg)" : "NASA Risk Score Reduction (FD002 FedAvg)",
+      val: `${Math.round(fd2.mse.summary.fedavg.nasa_score_mean).toLocaleString()} → ${Math.round(fd2.asymmetric.summary.fedavg.nasa_score_mean).toLocaleString()}`,
+      sub: LANG === "it" ? "-38.0% rischio medio e deviazione standard da 2,963 a 430" : "-38.0% mean risk score & std tightened from 2,963 to 430",
+      color: "var(--accent)",
+    },
+    {
+      title: LANG === "it" ? "Impronta Rete per Round (1D-CNN)" : "Per-Round Network Footprint (1D-CNN)",
+      val: `${(DATA.model_info.round_exchange_bytes / 1000).toFixed(1)} KB A/R`,
+      sub: LANG === "it" ? `${DATA.model_info.param_count.toLocaleString()} parametri · 0 byte di dati sensori esposti` : `${DATA.model_info.param_count.toLocaleString()} params · 0 raw sensor bytes exposed`,
+      color: "var(--purple)",
+    },
+  ];
+  document.getElementById("businessCards").innerHTML = cards.map(c => `
+    <div class="card">
+      <div class="card-title">${c.title}</div>
+      <div class="kpi-value" style="font-size:1.5rem;color:${c.color}">${c.val}</div>
+      <div class="kpi-sub">${c.sub}</div>
+    </div>`).join("");
+
+  // Asymmetric table
+  let aHtml = `<thead><tr><th>Dataset</th><th>Setup</th><th>Loss</th><th class="num">RMSE</th><th class="num">NASA Score</th><th class="num">Late %</th></tr></thead><tbody>`;
+  ["FD001", "FD002"].forEach(ds => {
+    ["local", "fedavg", "central"].forEach(setup => {
+      ["mse", "asymmetric"].forEach(loss => {
+        const st = asym[ds].losses[loss].summary[setup];
+        const badge = loss === "asymmetric" ? `<span class="pill pill-info">asym</span>` : `mse`;
+        aHtml += `<tr><td>${ds}</td><td>${setup}</td><td>${badge}</td><td class="num">${st.rmse_mean.toFixed(2)} ± ${st.rmse_std.toFixed(2)}</td><td class="num">${Math.round(st.nasa_score_mean).toLocaleString()}</td><td class="num">${st.late_rate_pct_mean.toFixed(1)}%</td></tr>`;
+      });
+    });
+  });
+  document.getElementById("asymTable").innerHTML = aHtml + "</tbody>";
+
+  // FD002 Imbalance table from summary.csv
+  const imb = DATA.benchmarks.reproducible.filter(r => r.dataset === "FD002" && r.partition === "engine_imbalance");
+  const rows = [];
+  ["local_only", "fedavg", "fedprox", "centralized"].forEach(m => {
+    ["global", "client:0", "client:1"].forEach(sc => {
+      const [scope, cid] = sc.split(":");
+      const rRow = imb.find(x => x.method === m && x.scope === scope && (cid ? x.client_id === cid : true) && x.metric === "rmse");
+      const nRow = imb.find(x => x.method === m && x.scope === scope && (cid ? x.client_id === cid : true) && x.metric === "nasa");
+      if (rRow && nRow) rows.push({ method: m, scope: cid ? `Client ${cid}` : "Global", rmse: `${rRow.mean} ± ${rRow.std}`, nasa: `${Math.round(nRow.mean).toLocaleString()}` });
+    });
+  });
+  let iHtml = `<thead><tr><th>Method</th><th>Scope</th><th class="num">RMSE</th><th class="num">NASA Score</th></tr></thead><tbody>`;
+  rows.forEach(r => { iHtml += `<tr><td>${r.method}</td><td>${r.scope}</td><td class="num">${r.rmse}</td><td class="num">${r.nasa}</td></tr>`; });
+  document.getElementById("imbalanceTable").innerHTML = iHtml + "</tbody>";
+}
+
+function renderAll() {
+  renderAsset();
+  renderCluster();
+  renderBusiness();
+}
+
+async function boot() {
+  const res = await fetch("/demo_data.json");
+  DATA = await res.json();
+  applyLabels();
+  onEngineChange();
+  initClusterRuns();
+  renderBusiness();
+  document.getElementById("hoursSelect").addEventListener("change", renderAsset);
+}
+boot();
+</script>
+</body>
+</html>
