@@ -102,6 +102,18 @@
       background: rgba(167, 139, 250, 0.08); border: 1px solid rgba(167, 139, 250, 0.3); color: #d8cdfc;
     }
     .hidden { display: none; }
+    .diag-bar { display: flex; height: 30px; border-radius: 8px; overflow: hidden; border: 1px solid var(--border); }
+    .diag-seg {
+      display: flex; align-items: center; justify-content: center; font-size: 0.74rem; font-weight: 700;
+      color: #0b111b; white-space: nowrap; overflow: hidden; transition: width 0.12s linear;
+    }
+    .diag-row { display: grid; grid-template-columns: 1fr auto; gap: 4px 10px; align-items: center; margin-bottom: 9px; font-size: 0.83rem; }
+    .diag-row .meter { grid-column: 1 / -1; height: 5px; border-radius: 3px; background: var(--surface-2); overflow: hidden; }
+    .diag-row .meter > span { display: block; height: 100%; }
+    .diag-summary {
+      margin-top: 12px; padding: 10px 14px; border-radius: 10px; font-size: 0.84rem;
+      background: var(--surface-2); border: 1px solid var(--border);
+    }
   </style>
 </head>
 <body>
@@ -193,6 +205,35 @@
           <span class="legend-item"><span class="dot" style="background:#22c55e"></span>s11 (Static Press.)</span>
         </div>
       </div>
+    </div>
+
+    <!-- EDGE DIAGNOSTICS: subsystem responsibility synced with cycleSlider -->
+    <div class="card" id="diagCard">
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:10px">
+        <strong id="diagTitle"></strong>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <span class="pill" id="diagPrimary"></span>
+          <span class="pill pill-ok" id="diagPrivacy"></span>
+        </div>
+      </div>
+      <div class="diag-bar" id="diagBar"></div>
+      <div class="legend" id="diagLegend"></div>
+      <div class="grid-3" style="margin:14px 0 0">
+        <div>
+          <div class="card-title" id="diagTopTitle"></div>
+          <div id="diagTop"></div>
+        </div>
+        <div>
+          <div class="card-title" id="diagDriftTitle"></div>
+          <div id="diagDrift"></div>
+        </div>
+        <div>
+          <div class="card-title" id="diagTrendTitle"></div>
+          <div class="chart-box" id="diagTrend"></div>
+        </div>
+      </div>
+      <div class="diag-summary" id="diagSummary"></div>
+      <div class="kpi-sub" id="diagBoundary" style="margin-top:8px"></div>
     </div>
   </section>
 
@@ -308,6 +349,22 @@ const I18N = {
         : `⚠ Ritardo di +${diff.toFixed(1)} cicli`;
     },
     stages: { critical: "Critico (<20 cicli)", warning: "Attenzione (22-48)", midlife: "Vita Media", healthy: "Sano" },
+    diagTitle: "Diagnostica Edge: quale sottosistema guida il calo di RUL?",
+    diagPrivacy: "🔒 Calcolata sul nodo · 0 byte grezzi inviati",
+    diagPrimary: (s) => `Sottosistema principale: ${s}`,
+    diagTopTitle: "Top-3 sensori per contributo (attribuzione)",
+    diagDriftTitle: "Top-3 sensori in deriva vs baseline sana",
+    diagTrendTitle: "Responsabilità per sottosistema nel tempo",
+    subsystems: { Fan: "Fan", LPC: "LPC", HPC: "HPC", Turbine: "Turbina" },
+    sensorNames: {
+      s2: "Temp. uscita LPC", s3: "Temp. uscita HPC", s4: "Temp. uscita LPT", s7: "Press. totale uscita HPC",
+      s8: "Velocità fisica fan", s9: "Velocità fisica core", s11: "Press. statica uscita HPC", s12: "Rapporto portata comb./Ps30",
+      s13: "Velocità corretta fan", s14: "Velocità corretta core", s15: "Rapporto di bypass", s17: "Entalpia spillamento",
+      s20: "Spillamento raffr. HPT", s21: "Spillamento raffr. LPT",
+    },
+    diagSummary: (sev, rul, prim, pct, top) =>
+      `<strong>${sev}</strong> · RUL stimata ${fmtHorizon(rul)}. Sottosistema principale <strong>${prim}</strong> (${pct.toFixed(1)}% dell'attribuzione). Sensori determinanti: ${top}.`,
+    diagBoundary: "Limite di valutazione: C-MAPSS fornisce solo la RUL per motore, senza etichette di guasto per componente. L'attribuzione (|(x − baseline sana) · ∂RUL/∂x|, impostazioni operative escluse) è una spiegazione del modello fisicamente coerente, non una diagnosi supervisionata.",
   },
   en: {
     subtitle: "Federated predictive maintenance at the Edge: real-time RUL estimation without raw factory telemetry leaving the plant",
@@ -347,6 +404,17 @@ const I18N = {
         : `⚠ Late by +${diff.toFixed(1)} cyc`;
     },
     stages: { critical: "Critical (<20 cyc)", warning: "Warning (22-48)", midlife: "Mid-life", healthy: "Healthy" },
+    diagTitle: "Edge Diagnostics: which subsystem is driving the RUL drop?",
+    diagPrivacy: "🔒 Computed on-node · 0 raw bytes sent",
+    diagPrimary: (s) => `Primary subsystem: ${s}`,
+    diagTopTitle: "Top-3 contributing sensors (attribution)",
+    diagDriftTitle: "Top-3 drifting sensors vs healthy baseline",
+    diagTrendTitle: "Subsystem responsibility over time",
+    subsystems: { Fan: "Fan", LPC: "LPC", HPC: "HPC", Turbine: "Turbine" },
+    sensorNames: null,
+    diagSummary: (sev, rul, prim, pct, top) =>
+      `<strong>${sev}</strong> · Predicted RUL ${fmtHorizon(rul)}. Primary subsystem <strong>${prim}</strong> (${pct.toFixed(1)}% of attribution). Top drivers: ${top}.`,
+    diagBoundary: "Evaluation boundary: C-MAPSS provides unit-level RUL only, with no per-unit component fault labels. Attribution (|(x − healthy baseline) · ∂RUL/∂x|, operating settings excluded) is a physically grounded model explanation, not a supervised component diagnosis.",
   }
 };
 
@@ -398,6 +466,12 @@ function applyLabels() {
   document.getElementById("imbalanceTableTitle").textContent = s.imbalanceTableTitle;
   document.getElementById("imbalanceTableSub").textContent = s.imbalanceTableSub;
   document.getElementById("engineeringNote").textContent = s.note;
+  document.getElementById("diagTitle").textContent = s.diagTitle;
+  document.getElementById("diagPrivacy").textContent = s.diagPrivacy;
+  document.getElementById("diagTopTitle").textContent = s.diagTopTitle;
+  document.getElementById("diagDriftTitle").textContent = s.diagDriftTitle;
+  document.getElementById("diagTrendTitle").textContent = s.diagTrendTitle;
+  document.getElementById("diagBoundary").textContent = s.diagBoundary;
   const zeroOpt = document.querySelector('#hoursSelect option[value="0"]');
   zeroOpt.textContent = LANG === "it" ? "Solo cicli" : "Cycles only";
 
@@ -490,6 +564,93 @@ function renderAsset() {
 
   drawRulChart(e, i);
   drawSensorChart(e, i);
+  drawDiagnostics(e, i, pSafe);
+}
+
+// EDGE DIAGNOSTICS (per-cycle, synced with cycleSlider / Play)
+const SUB_COLORS = { Fan: "#22d3ee", LPC: "#a3e635", HPC: "#f472b6", Turbine: "#f59e0b" };
+
+function sensorLabel(code) {
+  const meta = DATA.diagnostics_meta;
+  const info = meta.sensor_info[code];
+  const names = t().sensorNames;
+  return { symbol: info.symbol, name: (names && names[code]) || info.name, subsystem: info.subsystem };
+}
+
+function drawDiagnostics(e, curIdx, pSafe) {
+  const card = document.getElementById("diagCard");
+  const d = e.diagnostics;
+  const meta = DATA.diagnostics_meta;
+  if (!d || !meta) { card.classList.add("hidden"); return; }
+  card.classList.remove("hidden");
+  const s = t();
+  const subs = meta.subsystems;
+  const shares = d.subsystem_share[curIdx];
+  const primIdx = shares.indexOf(Math.max(...shares));
+  const prim = subs[primIdx];
+
+  document.getElementById("diagBar").innerHTML = subs.map((k, j) =>
+    `<div class="diag-seg" style="width:${shares[j]}%;background:${SUB_COLORS[k]}" title="${s.subsystems[k]} ${shares[j].toFixed(1)}%">${shares[j] >= 7 ? `${s.subsystems[k]} ${shares[j].toFixed(1)}%` : ""}</div>`).join("");
+  document.getElementById("diagLegend").innerHTML = subs.map((k, j) =>
+    `<span class="legend-item"><span class="dot" style="background:${SUB_COLORS[k]}"></span>${s.subsystems[k]} · ${shares[j].toFixed(1)}% <span style="opacity:0.7">(${meta.subsystem_sensors[k].join(", ")})</span></span>`).join("");
+
+  const primPill = document.getElementById("diagPrimary");
+  primPill.textContent = s.diagPrimary(s.subsystems[prim]);
+  primPill.className = "pill";
+  primPill.style.cssText = `background:${SUB_COLORS[prim]}22;color:${SUB_COLORS[prim]};border:1px solid ${SUB_COLORS[prim]}88`;
+
+  const topRows = d.top_contributors[curIdx].map(([code, pct]) => {
+    const L = sensorLabel(code);
+    return `<div class="diag-row"><span><strong>${code}</strong> ${L.symbol} · ${L.name}</span>
+      <span style="font-family:var(--mono)">${pct.toFixed(1)}%</span>
+      <div class="meter"><span style="width:${Math.min(100, pct * 2)}%;background:${SUB_COLORS[L.subsystem]}"></span></div></div>`;
+  }).join("");
+  document.getElementById("diagTop").innerHTML = topRows;
+
+  const driftRows = d.top_drifting[curIdx].map(([code, z]) => {
+    const L = sensorLabel(code);
+    const arrow = z >= 0 ? "▲" : "▼";
+    return `<div class="diag-row"><span><strong>${code}</strong> ${L.symbol} · ${L.name}</span>
+      <span style="font-family:var(--mono);color:${Math.abs(z) >= 3 ? "var(--danger)" : Math.abs(z) >= 2 ? "var(--warn)" : "var(--muted)"}">${arrow} ${z >= 0 ? "+" : ""}${z.toFixed(1)}σ</span>
+      <div class="meter"><span style="width:${Math.min(100, Math.abs(z) * 12)}%;background:${SUB_COLORS[L.subsystem]}"></span></div></div>`;
+  }).join("");
+  document.getElementById("diagDrift").innerHTML = driftRows;
+
+  drawDiagTrend(e, curIdx);
+
+  const sevTxt = pSafe <= 20 ? s.crit : pSafe <= 45 ? s.warn : s.ok;
+  const topTxt = d.top_contributors[curIdx].map(([code, pct]) => `${code} ${sensorLabel(code).symbol} (${pct.toFixed(1)}%)`).join(", ");
+  document.getElementById("diagSummary").innerHTML = s.diagSummary(sevTxt, pSafe, s.subsystems[prim], shares[primIdx], topTxt);
+}
+
+function drawDiagTrend(e, curIdx) {
+  const W = 380, H = 150, padL = 26, padR = 6, padT = 6, padB = 18;
+  const d = e.diagnostics, subs = DATA.diagnostics_meta.subsystems;
+  const n = e.cycles.length;
+  const xMin = e.cycles[0], xMax = e.cycles[n - 1];
+  const sx = (c) => padL + ((c - xMin) / Math.max(1, xMax - xMin)) * (W - padL - padR);
+  const sy = (v) => padT + (1 - v / 100) * (H - padT - padB);
+  const upto = d.subsystem_share.slice(0, curIdx + 1);
+  let lower = upto.map(() => 0);
+  let areas = "";
+  subs.forEach((k, j) => {
+    const upper = upto.map((row, idx) => lower[idx] + row[j]);
+    const top = upper.map((v, idx) => `${idx === 0 ? "M" : "L"}${sx(e.cycles[idx]).toFixed(1)},${sy(v).toFixed(1)}`).join(" ");
+    const bottom = lower.map((v, idx) => `L${sx(e.cycles[idx]).toFixed(1)},${sy(v).toFixed(1)}`).reverse().join(" ");
+    areas += `<path d="${top} ${bottom} Z" fill="${SUB_COLORS[k]}" opacity="0.8"/>`;
+    lower = upper;
+  });
+  const curX = sx(e.cycles[curIdx]).toFixed(1);
+  document.getElementById("diagTrend").innerHTML = `
+    <svg viewBox="0 0 ${W} ${H}">
+      <rect x="${padL}" y="${padT}" width="${W - padL - padR}" height="${H - padT - padB}" fill="none" stroke="#25344d"/>
+      ${areas}
+      <line x1="${curX}" y1="${padT}" x2="${curX}" y2="${H - padB}" stroke="#e6edf7" stroke-width="1.2" stroke-dasharray="3,2"/>
+      <text x="${padL - 4}" y="${sy(100) + 8}" fill="#93a4be" font-size="9" text-anchor="end">100%</text>
+      <text x="${padL - 4}" y="${sy(0)}" fill="#93a4be" font-size="9" text-anchor="end">0</text>
+      <text x="${padL}" y="${H - 4}" fill="#93a4be" font-size="9">Cycle ${xMin}</text>
+      <text x="${W - padR}" y="${H - 4}" fill="#93a4be" font-size="9" text-anchor="end">Cycle ${xMax}</text>
+    </svg>`;
 }
 
 function drawRulChart(e, curIdx) {

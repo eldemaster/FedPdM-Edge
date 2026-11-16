@@ -8,6 +8,10 @@ In the Flower demo, clients train on local windows and send model parameters to 
 
 The evaluated datasets are FD001–FD004. Targets use the conventional 125-cycle cap and the official held-out test files. The NASA asymmetric score is reported alongside RMSE. See [results/EXPERIMENTS.md](results/EXPERIMENTS.md) for the exact runs, raw outputs, and unavailable hardware. Legacy FD001/FD002 files remain under `results/fd001/` and `results/fd002/`; they are not combined with the paired experiment suite.
 
+## Edge diagnostics
+
+`diagnostics.py` attributes each RUL prediction to the 14 fault-bearing sensors and four engine subsystems (Fan, LPC, HPC, Turbine). It also measures each sensor's drift from that engine's own healthy start. Both run locally on the edge node, and the operating settings are excluded from fault responsibility. C-MAPSS has no per-unit component labels, so the module is validated for physical consistency and unsupervised fault-mode separation, not for supervised accuracy. See [docs/diagnostics.md](docs/diagnostics.md) and run `python experiments/validate_diagnostics.py` (5 seeds, FD001–FD004).
+
 ## Experiments
 
 `experiments/reproduce.py` contains the shared preprocessing and training pipeline for:
