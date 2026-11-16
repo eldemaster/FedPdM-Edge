@@ -68,10 +68,30 @@ def sha256(path):
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def paper_tree_sha256():
+def paper_files(root=ROOT):
+    """Tracked plus untracked-but-not-ignored files under ``root/paper``.
+
+    LaTeX build artifacts ignored by ``paper/.gitignore`` (``*.aux``,
+    ``main.pdf``, ...) are excluded so a local paper build does not change the
+    protected digest, while edits, deletions and new non-ignored files still do.
+    """
+    result = subprocess.run(
+        ["git", "-C", str(root), "ls-files", "-z", "--cached", "--others",
+         "--exclude-standard", "--", "paper"],
+        check=True,
+        stdout=subprocess.PIPE,
+    )
+    names = {name for name in result.stdout.decode().split("\0") if name}
+    return [Path(root) / name for name in sorted(names)]
+
+
+def paper_tree_sha256(root=ROOT):
+    paper = Path(root) / "paper"
     digest = hashlib.sha256()
-    for path in sorted(p for p in (ROOT / "paper").rglob("*") if p.is_file()):
-        digest.update(path.relative_to(ROOT / "paper").as_posix().encode())
+    for path in paper_files(root):
+        if not path.is_file():
+            continue  # deleted tracked file: omission changes the digest
+        digest.update(path.relative_to(paper).as_posix().encode())
         digest.update(b"\0")
         digest.update(hashlib.sha256(path.read_bytes()).digest())
     return digest.hexdigest()
@@ -404,7 +424,7 @@ class ArtifactIntegrityTest(unittest.TestCase):
             self.assertTrue(path.exists(), path)
             self.assertFalse(path.is_symlink(), path)
             if path.is_dir():
-                self.assertFalse(any(child.is_symlink() for child in path.rglob("*")), path)
+                self.assertFalse(any(child.is_symlink() for child in paper_files()), path)
 
         self.assertEqual(
             sha256(ROOT / "experiments/reproduce.py"),
@@ -418,6 +438,42 @@ class ArtifactIntegrityTest(unittest.TestCase):
             paper_tree_sha256(),
             "b39b3f15a5b22d5c65a5edbb5975963efce3b10f30b21c24b68697b54e55b365",
         )
+
+
+class PaperTreeDigestTest(unittest.TestCase):
+    def _repo(self, temp_dir):
+        root = Path(temp_dir)
+        subprocess.run(["git", "init", "-q", str(root)], check=True)
+        paper = root / "paper"
+        (paper / "sections").mkdir(parents=True)
+        (paper / ".gitignore").write_text("*.aux\n*.log\nmain.pdf\n")
+        (paper / "main.tex").write_text("\\documentclass{article}\n")
+        (paper / "sections" / "intro.tex").write_text("intro\n")
+        subprocess.run(["git", "-C", str(root), "add", "paper"], check=True)
+        return root, paper
+
+    def test_ignored_latex_artifacts_do_not_change_digest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, paper = self._repo(temp_dir)
+            clean = paper_tree_sha256(root)
+            (paper / "main.aux").write_text("build artifact")
+            (paper / "main.log").write_text("build log")
+            (paper / "main.pdf").write_bytes(b"%PDF-1.5")
+            self.assertEqual(paper_tree_sha256(root), clean)
+            self.assertNotIn(paper / "main.aux", paper_files(root))
+            self.assertNotIn(paper / "main.pdf", paper_files(root))
+
+    def test_tracked_edits_and_untracked_sources_change_digest(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            root, paper = self._repo(temp_dir)
+            clean = paper_tree_sha256(root)
+            (paper / "sections" / "extra.tex").write_text("new section\n")
+            self.assertIn(paper / "sections" / "extra.tex", paper_files(root))
+            self.assertNotEqual(paper_tree_sha256(root), clean)
+            (paper / "sections" / "extra.tex").unlink()
+            self.assertEqual(paper_tree_sha256(root), clean)
+            (paper / "main.tex").write_text("edited\n")
+            self.assertNotEqual(paper_tree_sha256(root), clean)
 
 
 @unittest.skipUnless(HAS_CMAPSS, "set CMAPSS_ZIP to an existing CMAPSSData.zip for smoke tests")
