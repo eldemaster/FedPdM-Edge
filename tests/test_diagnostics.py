@@ -11,7 +11,15 @@ import torch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import diagnostics as D  # noqa: E402
-from common import SEQ_LEN, USEFUL_SENSORS, CmapssRegressor, set_seed  # noqa: E402
+from common import SEQ_LEN, USEFUL_SENSORS, CmapssRegressor, cmapss_zip_path, load_cmapss_raw, set_seed  # noqa: E402
+
+
+def _real_data_available():
+    try:
+        cmapss_zip_path()
+        return True
+    except FileNotFoundError:
+        return False
 
 
 def synthetic_fleet(n_units=6, n_cycles=80, n_regimes=1, seed=0, wild_settings=False):
@@ -84,6 +92,35 @@ class AttributionTest(unittest.TestCase):
         _, a = D.attribute_windows(self.model, self.windows, method="input_x_gradient")
         np.testing.assert_allclose(a, expected, rtol=1e-5, atol=1e-9)
 
+    def test_baseline_x_gradient_formula_nontrivial_baseline(self):
+        rng = np.random.RandomState(11)
+        baseline = rng.rand(*self.windows.shape)
+        self.assertFalse(np.allclose(baseline, self.windows))
+        x = torch.tensor(self.windows, dtype=torch.float32, requires_grad=True)
+        y = self.model(x)
+        (g,) = torch.autograd.grad(y.sum(), x)
+        expected = np.abs((x.detach().double().numpy() - baseline) * g.double().numpy()).mean(1)
+        self.assertEqual(self.windows.shape[1], 30)
+        expected[:, D.SETTING_IDX] = 0.0
+        pred, a = D.attribute_windows(self.model, self.windows, baseline, method="baseline_x_gradient")
+        np.testing.assert_allclose(a, expected, rtol=1e-9, atol=1e-12)
+        np.testing.assert_allclose(pred, y.detach().double().numpy(), rtol=1e-9)
+        self.assertTrue(np.all(a[:, D.SETTING_IDX] == 0.0))
+        self.assertTrue((a[:, D.FAULT_IDX] > 0).any())
+
+    def test_empty_windows(self):
+        empty = np.zeros((0, SEQ_LEN, len(USEFUL_SENSORS)), dtype=np.float32)
+        for method in D.ATTRIBUTION_METHODS:
+            pred, attr = D.attribute_windows(self.model, empty, empty.astype(np.float64), method=method)
+            self.assertEqual(pred.shape, (0,))
+            self.assertEqual(pred.dtype, np.float64)
+            self.assertEqual(attr.shape, (0, len(USEFUL_SENSORS)))
+            self.assertEqual(attr.dtype, np.float64)
+        pred, attr = D.attribute_windows(self.model, empty)  # baseline=None fallback
+        self.assertEqual((pred.shape, attr.shape), ((0,), (0, len(USEFUL_SENSORS))))
+        with self.assertRaises(ValueError):
+            D.attribute_windows(self.model, empty, method="bogus")
+
     def test_conservation_sum_100(self):
         _, a = D.attribute_windows(self.model, self.windows, method="gradient")
         sh = D.sensor_shares(a)
@@ -110,6 +147,41 @@ class AttributionTest(unittest.TestCase):
         _, a = D.attribute_windows(self.model, self.windows, self.windows.astype(np.float64))
         self.assertTrue(np.allclose(a, 0.0))
         np.testing.assert_allclose(D.sensor_shares(a), 100.0 / 14)
+
+
+class RoundToTotalTest(unittest.TestCase):
+    def test_valid_shares_sum_exactly(self):
+        out = D.round_to_total([33.333, 33.333, 33.334], 1)
+        self.assertEqual(out, [33.3, 33.3, 33.4])
+        self.assertEqual(round(sum(out), 9), 100.0)
+        rng = np.random.RandomState(0)
+        for _ in range(50):
+            v = rng.dirichlet(np.ones(4)) * 100.0
+            for dec in (0, 1, 2):
+                self.assertAlmostEqual(sum(D.round_to_total(v, dec)), 100.0, places=9)
+
+    def test_largest_remainder_choice(self):
+        # floors 10,20,68 leave 2 units; largest remainders are .9 (idx0) and .6 (idx2)
+        self.assertEqual(D.round_to_total([10.9, 20.5, 68.6], 0), [11.0, 20.0, 69.0])
+        self.assertEqual(D.round_to_total([25.0, 25.0, 25.0, 25.0], 1), [25.0] * 4)
+        self.assertEqual(D.round_to_total([5.0, 5.0], 1, total=10.0), [5.0, 5.0])
+
+    def test_invalid_inputs_raise(self):
+        for bad in ([-1.0, 101.0], [float("nan"), 50.0], [float("inf"), 1.0]):
+            with self.assertRaises(ValueError):
+                D.round_to_total(bad, 1)
+        with self.assertRaises(ValueError):
+            D.round_to_total([50.0, 50.0], 1, total=float("nan"))
+        with self.assertRaises(ValueError):
+            D.round_to_total([50.0, 50.0], 1, total=-100.0)
+        # remainder above len(values): shares far below the total
+        with self.assertRaises(ValueError):
+            D.round_to_total([10.0, 10.0], 1, total=100.0)
+        # remainder below zero: shares far above the total
+        with self.assertRaises(ValueError):
+            D.round_to_total([90.0, 90.0], 1, total=100.0)
+        with self.assertRaises(ValueError):
+            D.round_to_total([], 1)
 
 
 class BaselineDriftTest(unittest.TestCase):
@@ -141,6 +213,23 @@ class BaselineDriftTest(unittest.TestCase):
         naive = D.fit_healthy_baseline(df, n_regimes=1).drift(g)
         i3 = D.FAULT_SENSORS.index("s3")
         self.assertGreater(z[-5:, i3].mean(), 3 * naive[-5:, i3].mean())
+
+    def test_regimes_1d_and_empty_inputs(self):
+        df = synthetic_fleet(n_regimes=6, n_units=8)
+        bl = D.fit_healthy_baseline(df, n_regimes=6)
+        two_d = bl.regimes(df[list(D.SETTINGS)].values[:10])
+        self.assertEqual(two_d.shape, (10,))
+        one_d = bl.regimes(df[list(D.SETTINGS)].values[0])
+        self.assertEqual(one_d.shape, (1,))
+        self.assertEqual(int(one_d[0]), int(two_d[0]))
+        self.assertEqual(bl.regimes(np.zeros((0, 3))).shape, (0,))
+        self.assertEqual(bl.regimes(np.zeros((0, 3))).dtype.kind, "i")
+        self.assertEqual(bl.regimes(df[list(D.SETTINGS)].iloc[:0]).shape, (0,))
+        with self.assertRaises(ValueError):
+            bl.regimes(np.zeros((4, 2)))
+        # empty frame flows through standardize
+        u, reg = bl.standardize(df.iloc[:0])
+        self.assertEqual((u.shape, reg.shape), ((0, 14), (0,)))
 
     def test_healthy_reference_settings_untouched(self):
         df = synthetic_fleet()
@@ -204,10 +293,64 @@ class EngineAndSummaryTest(unittest.TestCase):
         self.assertTrue(s["text"]["en"] and s["text"]["it"])
         json.dumps(s)  # serializable
 
+    def test_summarize_non_final_index(self):
+        out = self.diag.diagnose_engine(self.df[self.df.unit == 3], "SYN-U3")
+        s0 = self.diag.summarize(out, index=0)
+        self.assertEqual(s0["cycle"], SEQ_LEN)
+        self.assertEqual(s0["engine_id"], "SYN-U3")
+        self.assertEqual(s0["predicted_rul"], round(float(out["pred_rul"][0]), 2))
+        self.assertAlmostEqual(sum(s0["subsystem_shares_pct"].values()), 100.0, places=6)
+        self.assertEqual(len(s0["top_contributors"]), 3)
+        s_last = self.diag.summarize(out)
+        self.assertEqual(s_last["cycle"], 80)
+        self.assertEqual(self.diag.summarize(out, index=-1)["cycle"], s_last["cycle"])
+        self.assertEqual(self.diag.summarize(out, index=len(out["cycles"]) - 1), s_last)
+        json.dumps(s0)
+
     def test_severity_thresholds(self):
         self.assertEqual(D.severity_for(10), "critical")
         self.assertEqual(D.severity_for(30), "warning")
         self.assertEqual(D.severity_for(90), "healthy")
+
+
+@unittest.skipUnless(_real_data_available(), "CMAPSSData.zip not found (set CMAPSS_ZIP)")
+class RealDataIntegrationTest(unittest.TestCase):
+    """FD001 (single regime) and FD002 (multi-regime) engines through the full edge pipeline."""
+
+    def _run(self, subset, n_regimes):
+        df = load_cmapss_raw(f"train_{subset}.txt")
+        baseline = D.fit_healthy_baseline(df, n_regimes=n_regimes)
+        diag = D.EdgeDiagnostics(make_model(0), scales_of(df), baseline)
+        unit = int(df["unit"].min())
+        g = df[df["unit"] == unit]
+        T = len(g)
+        out = diag.diagnose_engine(g, f"{subset}-U{unit}")
+        n = T - SEQ_LEN + 1
+        for k, shape in [("pred_rul", (n,)), ("channel_attr", (n, 17)), ("sensor_share", (n, 14)),
+                         ("subsystem_share", (n, 4)), ("window_drift", (n, 14)), ("cycle_drift", (T, 14))]:
+            self.assertEqual(out[k].shape, shape, k)
+            self.assertTrue(np.isfinite(out[k]).all(), k)
+        self.assertEqual(len(out["cycles"]), n)
+        np.testing.assert_allclose(out["sensor_share"].sum(1), 100.0, atol=1e-9)
+        np.testing.assert_allclose(out["subsystem_share"].sum(1), 100.0, atol=1e-9)
+        self.assertTrue(np.all(out["channel_attr"][:, D.SETTING_IDX] == 0.0))
+        for idx in (0, -1):
+            s = diag.summarize(out, index=idx)
+            self.assertAlmostEqual(sum(s["subsystem_shares_pct"].values()), 100.0, places=6)
+            self.assertEqual(s["engine_id"], f"{subset}-U{unit}")
+            for e in s["top_contributors"] + s["top_drifting"]:
+                self.assertNotIn(e["sensor"], D.SETTINGS)
+            json.dumps(s)
+        return baseline, g
+
+    def test_fd001_engine(self):
+        baseline, g = self._run("FD001", 1)
+        self.assertEqual(baseline.n_regimes, 1)
+
+    def test_fd002_multi_regime_engine(self):
+        baseline, g = self._run("FD002", 6)
+        self.assertEqual(baseline.n_regimes, 6)
+        self.assertGreater(len(np.unique(baseline.regimes(g[list(D.SETTINGS)].values))), 1)
 
 
 if __name__ == "__main__":
