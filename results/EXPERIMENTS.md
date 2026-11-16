@@ -29,6 +29,31 @@ To recompute `summary.csv` from all completed top-level raw JSON files (for exam
 - On regime partitions, FedProx was close to FedAvg. Tested FedAdam had much larger error (RMSE 78.23 on FD002, 56.62 on FD004) under the fixed server learning rate. The asymmetric objective reduced mean NASA score relative to FedAvg on both datasets while increasing RMSE. The five-seed exact paired tests had minimum attainable two-sided p=0.0625 and no comparison was below 0.05.
 - The edge profiler passed a one-round, one-epoch smoke run on an Apple Silicon Mac (FD002 regime, client 0): 3.646 s training time, 426,196,992-byte peak process RSS, and 178,184 model-tensor payload bytes for downlink plus uplink. Its raw output is `results/edge/local-smoke-macos.json`; it is not a Raspberry Pi measurement and is excluded from edge claims.
 
+## Edge diagnostics validation (sensor/subsystem attribution)
+
+`experiments/validate_diagnostics.py` validates `diagnostics.py`. It is separate from the reproducible suite and does not change `reproduce.py` or `summary.csv`.
+
+Setup:
+- Seeds 7, 42, 100, 777, 2024, on FD001–FD004.
+- One isolated `CmapssRegressor` per seed, trained with `AsymmetricRULLoss` for 8 epochs on 80% of training units.
+- Raw output: `results/diagnostics_validation.json`. Method and full tables: `docs/diagnostics.md`.
+
+C-MAPSS has no per-unit component labels, so no supervised component accuracy is reported.
+
+- **FD001/FD002, windows with true RUL < 30:**
+  - Attribution puts the core subsystem first in 99.4 ± 0.8% / 100.0% of windows. Core = HPC ∪ combustor/turbine; chance by sensor count is 71.4%.
+  - HPC is first in 26.6 ± 5.5% / 59.6 ± 5.0% of windows, against 35.7% chance.
+  - Model-free drift ranks HPC first in 51.4% / 76.2% of windows.
+- **FD003/FD004, k=2 clustering of end-of-life drift profiles:**
+  - Silhouette 0.51 / 0.49. Cross-seed ARI 1.00 / 0.99.
+  - The HPC-like cluster matches the FD001/FD002 HPC drift signature (cosine 0.98 / 1.00).
+  - The other cluster reverses the P30/phi/bleed drift direction and lowers BPR (fan-mode candidate, not ground truth).
+  - Attribution-only clusters are stable on FD003 (ARI 1.00) but not on FD004 (0.70 ± 0.31).
+- **Edge overhead:**
+  - Measured on the Apple Silicon host, single thread, not on a Raspberry Pi.
+  - Inference alone is 0.05–0.07 ms per window. Inference + attribution + drift + summary is 0.49–0.93 ms per window. Autograd buffers are 117 KB per window.
+  - Socket instrumentation recorded 0 calls and 0 bytes during the diagnostics path.
+
 ## Edge measurement
 
 `experiments/profile_edge.py` records one-client training time per round, peak process RSS, and the tensor payload for one model download plus one update upload. Payload excludes gRPC framing and is not a wire capture. This code path does not enable TLS.

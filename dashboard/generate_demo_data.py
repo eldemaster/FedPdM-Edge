@@ -3,10 +3,16 @@
 Trains lightweight reference models on FD001 and FD002 (seed 42) reusing common.py
 helpers, computes cycle-by-cycle RUL trajectories on representative held-out test
 engines, and packages measured physical cluster & reproducible benchmark metrics.
+
+Each traced engine also carries local edge diagnostics (``diagnostics.py``):
+per-cycle subsystem responsibility shares (Fan / LPC / HPC / Turbine, summing to
+100%), top-3 contributing and top-3 drifting sensors, and a maintenance summary,
+computed from the FedAvg (Asymmetric) model on the engine's own telemetry.
 """
 import csv
 import json
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -16,6 +22,7 @@ import torch
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+import diagnostics as diag_mod  # noqa: E402
 from benchmark_asymmetric_loss import compute_scales_from_train  # noqa: E402
 from common import (  # noqa: E402
     MAX_RUL,
@@ -96,12 +103,49 @@ def train_subset_models(subset: str, seed: int = 42, rounds: int = 5, local_epoc
             gmodel.load_state_dict({k: sum(s[k].float() * n for s, n in zip(states, ns)) / tot for k in gstate})
         fed_models[loss_name] = gmodel
 
-    return scales, local_model, fed_models["mse"], fed_models["asymmetric"]
+    baseline = diag_mod.fit_healthy_baseline(df_raw, diag_mod.N_REGIMES[subset])
+    return scales, local_model, fed_models["mse"], fed_models["asymmetric"], baseline
 
 
-def pick_representative_engines(subset: str, scales: dict, local_model, fed_mse, fed_asym):
+def engine_diagnostics(model, scales: dict, baseline, raw_group, engine_id: str) -> dict:
+    """Per-cycle subsystem shares, top-3 contributing / drifting sensors, final summary."""
+    edge = diag_mod.EdgeDiagnostics(model, scales, baseline)
+    d = edge.diagnose_engine(raw_group, engine_id)
+    sens = diag_mod.FAULT_SENSORS
+    top_c, top_d, shares = [], [], []
+    for sh, sub, dr in zip(d["sensor_share"], d["subsystem_share"], d["window_drift"]):
+        shares.append(diag_mod.round_to_total(sub, 1))
+        top_c.append([[sens[i], round(float(sh[i]), 1)] for i in np.argsort(-sh, kind="stable")[:3]])
+        top_d.append([[sens[i], round(float(dr[i]), 2)] for i in np.argsort(-np.abs(dr), kind="stable")[:3]])
+    return {
+        "method": edge.method,
+        "subsystem_share": shares,
+        "top_contributors": top_c,
+        "top_drifting": top_d,
+        "drift_index": [round(float(np.abs(dr).mean()), 2) for dr in d["window_drift"]],
+        "final_summary": edge.summarize(d),
+    }
+
+
+def diagnostics_meta() -> dict:
+    return {
+        "subsystems": list(diag_mod.SUBSYSTEMS),
+        "subsystem_labels": diag_mod.SUBSYSTEM_LABELS,
+        "subsystem_sensors": diag_mod.SUBSYSTEM_SENSORS,
+        "sensor_info": diag_mod.SENSOR_INFO,
+        "excluded_channels": list(diag_mod.SETTINGS),
+        "model": "FedAvg (Asymmetric) global model, evaluated locally on the edge node",
+        "attribution_formula": "A_c = mean_t |(x[t,c] - b[t,c]) * dRUL/dx[t,c]|; b = regime-aware healthy baseline; settings forced to 0; share_c = 100*A_c/sum A",
+        "drift_formula": "z = (regime-standardized sensor - engine healthy mean over first 30 cycles) / pooled healthy noise; window mean",
+        "privacy": diag_mod.PRIVACY_METADATA,
+        "evaluation_boundary": diag_mod.EVALUATION_BOUNDARY,
+    }
+
+
+def pick_representative_engines(subset: str, scales: dict, local_model, fed_mse, fed_asym, baseline=None):
     """Select 4 diverse held-out test engines and trace cycle-by-cycle RUL predictions."""
-    df_test = apply_scale(load_cmapss_raw(f"test_{subset}.txt"), scales)
+    df_test_raw = load_cmapss_raw(f"test_{subset}.txt")
+    df_test = apply_scale(df_test_raw, scales)
     ruls = load_rul(f"RUL_{subset}.txt")
 
     candidates = []
@@ -161,6 +205,11 @@ def pick_representative_engines(subset: str, scales: dict, local_model, fed_mse,
                 "sensors": sensor_series,
             }
         )
+        if baseline is not None:
+            raw_grp = df_test_raw[df_test_raw["unit"] == unit_id]
+            diag = engine_diagnostics(fed_asym, scales, baseline, raw_grp, f"{subset}-U{unit_id}")
+            assert len(diag["subsystem_share"]) == len(eval_cycles)
+            traces[-1]["diagnostics"] = diag
     return traces
 
 
@@ -244,8 +293,8 @@ def main():
 
     engines = []
     for subset in ("FD001", "FD002"):
-        scales, m_loc, m_fed_mse, m_fed_asym = train_subset_models(subset, seed=42)
-        engines.extend(pick_representative_engines(subset, scales, m_loc, m_fed_mse, m_fed_asym))
+        scales, m_loc, m_fed_mse, m_fed_asym, baseline = train_subset_models(subset, seed=42)
+        engines.extend(pick_representative_engines(subset, scales, m_loc, m_fed_mse, m_fed_asym, baseline))
 
     payload = {
         "model_info": {
@@ -258,13 +307,17 @@ def main():
             "round_exchange_bytes": tensor_bytes * 2,
         },
         "engines": engines,
+        "diagnostics_meta": diagnostics_meta(),
         "cluster": load_cluster_rounds(),
         "benchmarks": load_summary_highlights(),
     }
 
     out_path = Path(__file__).resolve().parent / "demo_data.json"
+    text = json.dumps(payload, indent=2)
+    # keep the file diff-friendly but compact: inline innermost scalar arrays
+    text = re.sub(r"\[\s*([^\[\]{}]*?)\s*\]", lambda m: "[" + re.sub(r"\s*\n\s*", " ", m.group(1)) + "]", text)
     with open(out_path, "w") as f:
-        json.dump(payload, f, indent=2)
+        f.write(text + "\n")
     print(f"Wrote {out_path} ({out_path.stat().st_size / 1024:.1f} KiB, {len(engines)} engines)")
 
 
