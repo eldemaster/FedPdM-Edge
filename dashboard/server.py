@@ -28,6 +28,11 @@ class DemoHandler(http.server.SimpleHTTPRequestHandler):
             self.path = "/index.html"
         return super().do_GET()
 
+    def list_directory(self, path):
+        """Never expose directory listings (e.g. __pycache__/); only index.html is served for "/"."""
+        self.send_error(404, "Not Found")
+        return None
+
     def log_message(self, format, *args):  # noqa: A002
         return
 
@@ -42,7 +47,8 @@ def main():
     handler = functools.partial(DemoHandler, directory=str(DASHBOARD_DIR))
     socketserver.TCPServer.allow_reuse_address = True
     with socketserver.TCPServer((args.host, args.port), handler) as httpd:
-        url = f"http://{args.host}:{args.port}/"
+        port = httpd.server_address[1]  # actual bound port (supports --port 0)
+        url = f"http://{args.host}:{port}/"
         print(f"FedPdM-Edge Dashboard running at {url} (Ctrl+C to stop)", flush=True)
         if not args.no_browser:
             threading.Timer(0.6, lambda: webbrowser.open(url)).start()

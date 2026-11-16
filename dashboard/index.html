@@ -472,8 +472,13 @@ function applyLabels() {
   document.getElementById("diagDriftTitle").textContent = s.diagDriftTitle;
   document.getElementById("diagTrendTitle").textContent = s.diagTrendTitle;
   document.getElementById("diagBoundary").textContent = s.diagBoundary;
-  const zeroOpt = document.querySelector('#hoursSelect option[value="0"]');
-  zeroOpt.textContent = LANG === "it" ? "Solo cicli" : "Cycles only";
+  document.querySelectorAll("#hoursSelect option").forEach(opt => {
+    const mult = parseFloat(opt.value);
+    opt.textContent = !mult
+      ? (LANG === "it" ? "Solo cicli" : "Cycles only")
+      : `${LANG === "it" ? "1 ciclo" : "1 cycle"} = ${mult.toFixed(1)} h`;
+  });
+  if (!DATA) return;  // data not loaded yet: static labels only
 
   // Refresh engine dropdown labels cleanly preserving index
   const sel = document.getElementById("engineSelect");
@@ -896,6 +901,7 @@ function renderBusiness() {
 }
 
 function renderAll() {
+  if (!DATA) return;
   renderAsset();
   renderCluster();
   renderBusiness();
