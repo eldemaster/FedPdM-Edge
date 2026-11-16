@@ -153,7 +153,12 @@ class HealthyBaseline:
         return len(self.centroids)
 
     def regimes(self, settings: np.ndarray) -> np.ndarray:
-        z = (np.asarray(settings, dtype=np.float64) - self.set_mean) / self.set_std
+        s = np.asarray(settings, dtype=np.float64)
+        if s.size == 0:
+            return np.zeros(0, dtype=np.intp)
+        if s.shape[-1:] != (3,) or s.ndim > 2:
+            raise ValueError(f"settings must have shape (3,) or (T, 3), got {s.shape}")
+        z = (np.atleast_2d(s) - self.set_mean) / self.set_std
         return ((z[:, None, :] - self.centroids[None]) ** 2).sum(-1).argmin(1)
 
     def standardize(self, frame: pd.DataFrame) -> tuple:
@@ -230,6 +235,8 @@ def attribute_windows(model: torch.nn.Module, windows: np.ndarray, baseline: Opt
         raise ValueError(f"unknown attribution method {method!r}")
     if method == "baseline_x_gradient" and baseline is None:
         method = "input_x_gradient"
+    if len(windows) == 0:
+        return np.zeros((0,), dtype=np.float64), np.zeros((0, len(USEFUL_SENSORS)), dtype=np.float64)
     model.eval()
     preds, attrs = [], []
     for i in range(0, len(windows), batch_size):
@@ -274,8 +281,14 @@ def round_to_total(values: Sequence[float], decimals: int = 1, total: float = 10
     """Largest-remainder rounding so rounded shares still sum exactly to ``total``."""
     q = 10 ** decimals
     v = np.asarray(values, dtype=np.float64) * q
+    if not (np.isfinite(v).all() and np.isfinite(total)):
+        raise ValueError("round_to_total requires finite values and total")
+    if (v < 0).any() or total < 0:
+        raise ValueError("round_to_total requires non-negative values and total")
     fl = np.floor(v)
     rest = int(round(total * q - fl.sum()))
+    if rest < 0 or rest > len(v):
+        raise ValueError(f"values cannot be rounded to total {total}: remainder {rest} outside [0, {len(v)}]")
     order = np.argsort(-(v - fl))
     fl[order[:rest]] += 1
     return [round(float(x) / q, decimals) for x in fl]
