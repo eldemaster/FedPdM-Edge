@@ -32,3 +32,41 @@ With $\Delta_i=\hat y_i-y_i$ (positive = late prediction), RMSE is $\sqrt{\frac1
 S=\sum_{i=1}^{M}\begin{cases}e^{-\Delta_i/13}-1,&\Delta_i<0\\ e^{\Delta_i/10}-1,&\Delta_i\ge 0.\end{cases}
 \end{equation}
 Late errors are weighted by the smaller constant 10 and so grow faster. $S$ is a sum and thus is not comparable across test sets of different size (FD001 vs.\ FD002).
+
+\subsection{Local degradation attribution and healthy-baseline drift}
+\label{sec:method-diag}
+\textbf{Channel map.} The model input has 17 channels: three operating settings and 14 sensors. Following Table~2 of Saxena et al.~\cite{saxena2008damage}, the 14 sensors are mapped to four subsystems (Table~\ref{tab:channels}). The settings \texttt{setting1..3} remain model inputs but describe the flight condition, not the engine's health, so they are explicitly excluded from fault responsibility. The Turbine group includes the fuel-flow ratio $\phi$ (s12), which is defined relative to the HPC outlet pressure; we place it with the combustor and hot section. This assignment affects the HPC-versus-Turbine split reported later, but not the core-versus-Fan/LPC split.
+
+\begin{table}[t]
+\centering
+\caption{Sensor-to-subsystem map used for attribution, after Table~2 of~\cite{saxena2008damage}. Operating settings carry no fault responsibility.}
+\label{tab:channels}
+\footnotesize
+\begin{tabular}{@{}lp{0.74\columnwidth}@{}}
+\toprule
+Subsystem & Sensors \\
+\midrule
+Fan & Nf (s8), NRf (s13), BPR (s15) \\
+LPC & T24 (s2) \\
+HPC & T30 (s3), P30 (s7), Nc (s9), Ps30 (s11), NRc (s14) \\
+Turbine & T50 (s4), $\phi$ (s12), htBleed (s17), W31 (s20), W32 (s21) \\
+Excluded & \texttt{setting1}, \texttt{setting2}, \texttt{setting3} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Baseline-relative attribution.} For a window $\mathbf{x}\in\mathbb{R}^{W\times 17}$ in the model's scaled input space and its prediction $\hat y=f_{\mathbf{w}}(\mathbf{x})$, the attribution of channel $c$ is
+\begin{equation}
+A_c=\frac{1}{W}\sum_{t=1}^{W}\left|\bigl(x_{t,c}-b_{t,c}\bigr)\,\frac{\partial \hat y}{\partial x_{t,c}}\right|,
+\label{eq:attr}
+\end{equation}
+where $\mathbf{b}$ is the engine's healthy-baseline expectation for the same cycles and operating regime (defined below). This is a first-order estimate of how much the deviation of channel $c$ from healthy moves the RUL estimate. It is a baseline variant of gradient$\times$input attribution~\cite{simonyan2014saliency,shrikumar2017deeplift,sundararajan2017axiomatic}; plain saliency $|\partial\hat y/\partial x_{t,c}|$ is kept as a comparison. For the settings, $\mathbf{b}$ equals the observed values, and their $A_c$ is additionally set to zero. Sensor shares are $s_c=100\,A_c/\sum_{c'}A_{c'}$ over the 14 sensors, and a subsystem share is the sum of its sensors' shares. Both therefore sum to exactly 100\%. If every $A_c$ is zero, the shares fall back to a uniform split. Displayed one-decimal shares use largest-remainder rounding, so they still sum to exactly 100.0. The \emph{primary} subsystem of a window is the one with the largest share.
+
+\textbf{Regime-aware healthy-baseline drift.} The drift score does not use the model. Each raw cycle is assigned to the nearest of $k$ operating-regime centroids, fitted by k-means on standardized settings ($k{=}1$ for FD001/FD003, $k{=}6$ for FD002/FD004). Each sensor is standardized with that regime's mean and standard deviation, giving $u_{t,c}$. The first $H{=}30$ cycles of each engine define its healthy offset, and
+\begin{equation}
+z_{t,c}=\frac{u_{t,c}-\frac{1}{H}\sum_{t'\le H}u_{t',c}}{\sigma^{\text{h}}_c},
+\label{eq:drift}
+\end{equation}
+where $\sigma^{\text{h}}_c$ is the pooled within-engine early-life noise of the local fleet. Window drift is the mean of $z_{t,c}$ over the window. The baseline $\mathbf{b}$ in~\eqref{eq:attr} is the same regime mean plus engine offset, mapped back to raw units and scaled like the model input. The subsystem drift is the mean $|z|$ of its sensors, which does not depend on how many sensors a subsystem has.
+
+\textbf{Maintenance summary.} For each window, the module reports the predicted RUL, a severity level from fixed predicted-RUL thresholds, the subsystem shares, the top-3 contributing and top-3 drifting sensors with their physical names, and the evaluation-boundary note that the output is an explanation, not a supervised diagnosis.

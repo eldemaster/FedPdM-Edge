@@ -436,7 +436,7 @@ class ArtifactIntegrityTest(unittest.TestCase):
         )
         self.assertEqual(
             paper_tree_sha256(),
-            "b39b3f15a5b22d5c65a5edbb5975963efce3b10f30b21c24b68697b54e55b365",
+            "f76d6bd93d7454a77fe9dc2c5237ec565c76321debf34b925f997371dd0a8d45",
         )
 
 

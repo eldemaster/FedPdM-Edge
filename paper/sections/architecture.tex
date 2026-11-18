@@ -1,16 +1,22 @@
 \section{System Architecture}
 \label{sec:arch}
-The intended deployment has two tiers (Fig.~\ref{fig:arch}). \emph{Tier~1} are client nodes that form sliding windows and train local models. \emph{Tier~2} is a coordinator that aggregates model parameters; the legacy demo uses Flower for this role. The experiment runner uses centralized min--max statistics fitted on the training split; these statistics are not private. The legacy Flower demo uses gRPC without TLS configuration. The paired experiment runner simulates local client updates in one process, so it does not measure network transport security or end-to-end Flower overhead.
+The intended deployment has two tiers (Fig.~\ref{fig:arch}). \emph{Tier~1} are client nodes that form sliding windows, train local models, and run local diagnostics. \emph{Tier~2} is a coordinator that aggregates model parameters; the legacy demo uses Flower for this role. The experiment runner uses centralized min--max statistics fitted on the training split; these statistics are not private. The legacy Flower demo uses gRPC without TLS configuration. The paired experiment runner simulates local client updates in one process, so it does not measure network transport security or end-to-end Flower overhead.
 
 \begin{figure}[t]
 \centering
 \fbox{\parbox{0.9\columnwidth}{\centering\small
-Client A: local windows $\rightarrow$ 1D-CNN\\[2pt]
-Client B: local windows $\rightarrow$ 1D-CNN\\[2pt]
-$\Updownarrow$ model parameters over gRPC (TLS not configured)\\[2pt]
+Client A: local windows $\rightarrow$ 1D-CNN $\rightarrow$ RUL\\
+\hspace*{1.5em}$\hookrightarrow$ local diagnostics: subsystem shares, drift, summary\\[2pt]
+Client B: local windows $\rightarrow$ 1D-CNN $\rightarrow$ RUL\\
+\hspace*{1.5em}$\hookrightarrow$ local diagnostics: subsystem shares, drift, summary\\[2pt]
+$\Updownarrow$ model parameters only, over gRPC (TLS not configured)\\[2pt]
 Coordinator: aggregation $\rightarrow$ global model}}
-\caption{Schematic target architecture. The paired experiment runner simulates clients in one local process; it does not measure network transport.}
+\caption{Schematic target architecture. Diagnostics run on the node that holds the telemetry and are not part of the exchanged payload. The paired experiment runner simulates clients in one local process; it does not measure network transport.}
 \label{fig:arch}
 \end{figure}
 
-\textbf{Privacy scope.} Parameter sharing keeps raw telemetry out of the exchanged payloads, but updates can still leak information~\cite{abadi2016dpsgd}. No TLS certificates, secure aggregation, or differential privacy mechanism is configured in the Flower client/server calls or the experiment runner; we make no formal privacy or encrypted-transport guarantee. In addition, centrally computed scaling statistics are shared with clients. Earlier README claims of mTLS and encrypted weights were removed because the checked-in code does not implement them.
+\textbf{Local diagnostics.} After inference, a node can run the diagnostics module (\texttt{diagnostics.py}, Section~\ref{sec:method-diag}) on its own engine history. It fits a healthy baseline on the node's local fleet, attributes the RUL estimate to four engine subsystems, computes sensor drift, and produces a maintenance summary. The module contains no network code. Its outputs are aggregate shares (\%), standardized drift scores, the predicted RUL and text, not raw sensor readings. Nothing in the federated protocol transmits them.
+
+\textbf{Offline dashboard.} A presentation dashboard (\texttt{dashboard/}) displays these outputs. It is a single HTML page with no external resources, served by a Python standard-library HTTP server that binds to \texttt{127.0.0.1} by default. It reads a precomputed \texttt{demo\_data.json}. That file holds RUL trajectories and per-cycle diagnostics for eight official FD001/FD002 test engines, computed with reference models trained for the demo. The dashboard is a visualization of committed outputs, not a deployed monitoring service, and we report no measurement from it.
+
+\textbf{Privacy scope.} Parameter sharing keeps raw telemetry out of the exchanged payloads, but updates can still leak information~\cite{abadi2016dpsgd}. No TLS certificates, secure aggregation, or differential privacy mechanism is configured in the Flower client/server calls or the experiment runner; we make no formal privacy or encrypted-transport guarantee. In addition, centrally computed scaling statistics are shared with clients. Earlier README claims of mTLS and encrypted weights were removed because the checked-in code does not implement them. Local diagnostics do not change this scope.
