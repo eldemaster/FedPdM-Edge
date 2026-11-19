@@ -21120,7 +21120,11 @@
         "rmse": 19.13,
         "nasa": 4272.1
       }
-    ]
+    ],
+    "highlights": {
+      "tensor_payload_kb": 89.1,
+      "round_trip_tensor_kb": 178.2
+    }
   },
   "benchmarks": {
     "asymmetric": {
@@ -23886,6 +23890,22 @@
         "mean": 20447.51,
         "std": 290.64
       }
-    ]
+    ],
+    "highlights": {
+      "fedavg_late_rate_pct": {
+        "mse": {
+          "min": 48.9,
+          "max": 63.8
+        },
+        "asymmetric": {
+          "min": 25.3,
+          "max": 34.2
+        }
+      },
+      "fd002_imbalance_client_0_rmse": {
+        "isolated_local": 38.13,
+        "federated": 22.21
+      }
+    }
   }
 }

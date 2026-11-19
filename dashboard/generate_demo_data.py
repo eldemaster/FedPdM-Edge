@@ -9,7 +9,9 @@ per-cycle subsystem responsibility shares (Fan / LPC / HPC / Turbine, summing to
 100%), top-3 contributing and top-3 drifting sensors, and a maintenance summary,
 computed from the FedAvg (Asymmetric) model on the engine's own telemetry.
 """
+import base64
 import csv
+import gzip
 import json
 import os
 import re
@@ -44,6 +46,21 @@ from common import (  # noqa: E402
 )
 
 DEMO_SENSORS = ["s2", "s3", "s4", "s11"]
+FALLBACK_TAG = '<script id="demoDataGzip" type="application/octet-stream">'
+
+
+def update_file_replay_fallback(data_path: Path) -> None:
+    """Embed a deterministic compressed copy for browsers that block file:// fetches."""
+    index_path = data_path.parent / "index.html"
+    if not index_path.is_file():
+        return
+    html = index_path.read_text(encoding="utf-8")
+    start = html.index(FALLBACK_TAG)
+    content_start = start + len(FALLBACK_TAG)
+    end = html.index("</script>", content_start)
+    encoded = base64.b64encode(gzip.compress(data_path.read_bytes(), compresslevel=9, mtime=0)).decode("ascii")
+    wrapped = "\n" + "\n".join(encoded[i:i + 120] for i in range(0, len(encoded), 120)) + "\n"
+    index_path.write_text(html[:content_start] + wrapped + html[end:], encoding="utf-8")
 
 
 def train_subset_models(subset: str, seed: int = 42, rounds: int = 5, local_epochs: int = 2):
@@ -282,7 +299,36 @@ def load_summary_highlights():
                         "std": round(float(row["std"]), 2),
                     }
                 )
-    return {"asymmetric": asym_data["subsets"], "reproducible": repro_rows}
+    subsets = asym_data["subsets"]
+    late_rates = {
+        loss: [subsets[dataset]["losses"][loss]["summary"]["fedavg"]["late_rate_pct_mean"]
+               for dataset in sorted(subsets)]
+        for loss in ("mse", "asymmetric")
+    }
+    imbalance_rmse = {
+        row["method"]: row["mean"]
+        for row in repro_rows
+        if row["dataset"] == "FD002"
+        and row["partition"] == "engine_imbalance"
+        and row["scope"] == "client"
+        and row["client_id"] == "0"
+        and row["metric"] == "rmse"
+        and row["method"] in ("local_only", "fedavg")
+    }
+    return {
+        "asymmetric": subsets,
+        "reproducible": repro_rows,
+        "highlights": {
+            "fedavg_late_rate_pct": {
+                loss: {"min": round(min(values), 1), "max": round(max(values), 1)}
+                for loss, values in late_rates.items()
+            },
+            "fd002_imbalance_client_0_rmse": {
+                "isolated_local": imbalance_rmse["local_only"],
+                "federated": imbalance_rmse["fedavg"],
+            },
+        },
+    }
 
 
 def main():
@@ -296,19 +342,25 @@ def main():
         scales, m_loc, m_fed_mse, m_fed_asym, baseline = train_subset_models(subset, seed=42)
         engines.extend(pick_representative_engines(subset, scales, m_loc, m_fed_mse, m_fed_asym, baseline))
 
+    model_info = {
+        "architecture": "1D-CNN (2 Conv layers 32/64 ch + MLP)",
+        "window_cycles": SEQ_LEN,
+        "rul_cap_cycles": MAX_RUL,
+        "sensor_channels": len(USEFUL_SENSORS),
+        "param_count": param_count,
+        "tensor_payload_bytes": tensor_bytes,
+        "round_exchange_bytes": tensor_bytes * 2,
+    }
+    cluster = load_cluster_rounds()
+    cluster["highlights"] = {
+        "tensor_payload_kb": round(tensor_bytes / 1000, 1),
+        "round_trip_tensor_kb": round(tensor_bytes * 2 / 1000, 1),
+    }
     payload = {
-        "model_info": {
-            "architecture": "1D-CNN (2 Conv layers 32/64 ch + MLP)",
-            "window_cycles": SEQ_LEN,
-            "rul_cap_cycles": MAX_RUL,
-            "sensor_channels": len(USEFUL_SENSORS),
-            "param_count": param_count,
-            "tensor_payload_bytes": tensor_bytes,
-            "round_exchange_bytes": tensor_bytes * 2,
-        },
+        "model_info": model_info,
         "engines": engines,
         "diagnostics_meta": diagnostics_meta(),
-        "cluster": load_cluster_rounds(),
+        "cluster": cluster,
         "benchmarks": load_summary_highlights(),
     }
 
@@ -318,6 +370,7 @@ def main():
     text = re.sub(r"\[\s*([^\[\]{}]*?)\s*\]", lambda m: "[" + re.sub(r"\s*\n\s*", " ", m.group(1)) + "]", text)
     with open(out_path, "w") as f:
         f.write(text + "\n")
+    update_file_replay_fallback(out_path)
     print(f"Wrote {out_path} ({out_path.stat().st_size / 1024:.1f} KiB, {len(engines)} engines)")
 
 
