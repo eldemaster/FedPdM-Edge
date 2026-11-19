@@ -10,7 +10,9 @@ Run with the standard library runner:
 * The headless-browser test uses Selenium (Chrome, falling back to Safari) and is skipped
   only when no browser driver can be started.
 """
+import base64
 import functools
+import gzip
 import http.server
 import importlib.util
 import json
@@ -139,8 +141,24 @@ def http_get(url, timeout=10):
         return e.code, e.headers, e.read()
 
 
+def http_post_json(url, payload, timeout=10):
+    body = json.dumps(payload).encode("utf-8")
+    request = urllib.request.Request(
+        url, data=body, method="POST", headers={"Content-Type": "application/json"}
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as r:
+            return r.status, r.headers, r.read()
+    except urllib.error.HTTPError as e:
+        return e.code, e.headers, e.read()
+
+
 def inline_scripts(html):
-    return re.findall(r"<script(?![^>]*\bsrc=)[^>]*>(.*?)</script>", html, flags=re.S)
+    return re.findall(
+        r'<script(?![^>]*\bsrc=)(?![^>]*type="application/octet-stream")[^>]*>(.*?)</script>',
+        html,
+        flags=re.S,
+    )
 
 
 # --------------------------------------------------------------------------- 1. demo_data.json
@@ -163,6 +181,19 @@ class DemoDataInvariantsTest(unittest.TestCase):
         for e in engines:
             self.assertTrue(e["id"].startswith(e["subset"] + "-U"), e["id"])
             self.assertIn(e["stage"], ("critical", "warning", "midlife", "healthy"))
+
+    def test_generated_summary_highlights(self):
+        cluster = self.data["cluster"]["highlights"]
+        self.assertEqual(cluster["tensor_payload_kb"], 89.1)
+        self.assertEqual(cluster["round_trip_tensor_kb"], 178.2)
+        highlights = self.data["benchmarks"]["highlights"]
+        self.assertEqual(highlights["fedavg_late_rate_pct"], {
+            "mse": {"min": 48.9, "max": 63.8},
+            "asymmetric": {"min": 25.3, "max": 34.2},
+        })
+        self.assertEqual(highlights["fd002_imbalance_client_0_rmse"], {
+            "isolated_local": 38.13, "federated": 22.21,
+        })
 
     def test_diagnostics_meta(self):
         meta = self.data["diagnostics_meta"]
@@ -276,6 +307,10 @@ class GeneratorUnitTest(unittest.TestCase):
         again = G.engine_diagnostics(self.model, self.scales, self.baseline, self.raw, "SYN-U2")
         self.assertEqual(json.dumps(again, sort_keys=True), json.dumps(self.out, sort_keys=True))
 
+    def test_summary_highlights_are_derived_from_results(self):
+        generated = G.load_summary_highlights()
+        self.assertEqual(generated["highlights"], load_demo_data()["benchmarks"]["highlights"])
+
 
 @unittest.skipUnless(HAS_CMAPSS, "set CMAPSS_ZIP=/path/to/CMAPSSData.zip to regenerate demo_data.json")
 class GeneratorRegenerationTest(unittest.TestCase):
@@ -333,12 +368,53 @@ class ServerSmokeTest(unittest.TestCase):
             self.assertEqual(status, 200)
             self.assertEqual(len(json.loads(body)["engines"]), 8)
 
+            status, headers, body = http_get(base + "/api/live")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"mode": "poc", "assets": {}})
+
             status, _, _ = http_get(base + "/does-not-exist.json")
             self.assertEqual(status, 404)
         finally:
             code, out = stop_dashboard_server(proc)
         self.assertEqual(code, 0, out)
         self.assertIn("Shutting down", out)
+
+    def test_edge_update_accepts_summaries_and_enforces_zero_raw_contract(self):
+        proc, base = start_dashboard_server()
+        update = {
+            "asset_id": "pilot-pump-7",
+            "cycle": 481,
+            "predicted_rul": 17.5,
+            "severity": "critical",
+            "subsystem_shares_pct": {"Fan": 5.0, "LPC": 10.0, "HPC": 70.0, "Turbine": 15.0},
+            "top_contributors": [["s3", 41.2], ["s11", 24.8], ["s4", 10.1]],
+            "top_drifting": [["s11", 4.2], ["s3", 3.7], ["s4", -2.1]],
+            "summary": "HPC degradation requires maintenance planning.",
+        }
+        try:
+            status, headers, body = http_post_json(base + "/api/edge_update", update)
+            self.assertEqual(status, 200, body)
+            self.assertIn("application/json", headers["Content-Type"])
+            self.assertEqual(json.loads(body), {"status": "accepted", "asset_id": "pilot-pump-7"})
+
+            status, _, body = http_get(base + "/api/live")
+            self.assertEqual(status, 200)
+            self.assertEqual(json.loads(body), {"mode": "live", "assets": {"pilot-pump-7": update}})
+
+            for forbidden in dash_server.RAW_TELEMETRY_FIELDS:
+                with self.subTest(forbidden=forbidden):
+                    bad = dict(update)
+                    bad["summary"] = {"nested": {forbidden: [1.0, 2.0]}}
+                    status, _, body = http_post_json(base + "/api/edge_update", bad)
+                    self.assertEqual(status, 400, body)
+                    self.assertIn("raw telemetry", json.loads(body)["error"])
+
+            oversized = {"asset_id": "too-large", "summary": "x" * (64 * 1024)}
+            status, _, body = http_post_json(base + "/api/edge_update", oversized)
+            self.assertEqual(status, 413, body)
+        finally:
+            code, out = stop_dashboard_server(proc)
+        self.assertEqual(code, 0, out)
 
     def test_no_directory_listing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -384,6 +460,16 @@ class IndexStaticTest(unittest.TestCase):
             res = subprocess.run([node, "--check", bad], capture_output=True, text=True, timeout=60)
             self.assertNotEqual(res.returncode, 0)
 
+    def test_embedded_file_replay_is_exact_demo_data(self):
+        match = re.search(
+            r'<script id="demoDataGzip" type="application/octet-stream">(.*?)</script>',
+            self.html,
+            flags=re.S,
+        )
+        self.assertIsNotNone(match)
+        compressed = base64.b64decode(re.sub(r"\s", "", match.group(1)))
+        self.assertEqual(gzip.decompress(compressed), DATA_PATH.read_bytes())
+
     def test_script_dom_ids_exist(self):
         ids = set(re.findall(r'\bid="([^"]+)"', self.html))
         script = inline_scripts(self.html)[0]
@@ -391,8 +477,17 @@ class IndexStaticTest(unittest.TestCase):
         self.assertTrue(used, "no getElementById calls found")
         self.assertEqual(used - ids, set())
         for tab in ("tab-asset", "tab-cluster", "tab-business", "cycleSlider", "engineSelect", "langBtn",
-                    "diagCard", "diagBar", "diagTop", "diagDrift", "diagTrend", "diagSummary"):
+                    "diagCard", "diagBar", "diagTop", "diagDrift", "diagTrend", "diagSummary",
+                    "modeSelect", "streamBadge", "assetModeBadge", "livePanel", "liveAssetSelect"):
             self.assertIn(tab, ids)
+
+    def test_tab_headline_numbers_come_from_demo_data(self):
+        for magic in ("178.2 KB", "38.13 RMSE", "22.21", "50–64%", "20–34%"):
+            self.assertNotIn(magic, self.html)
+        script = inline_scripts(self.html)[0]
+        self.assertIn("DATA.cluster.highlights.round_trip_tensor_kb", script)
+        self.assertIn("benchmarkHighlights.fd002_imbalance_client_0_rmse", script)
+        self.assertIn("benchmarkHighlights.fedavg_late_rate_pct", script)
 
 
 ERROR_HOOK = """
@@ -620,6 +715,66 @@ class DashboardBrowserTest(unittest.TestCase):
                                  f"{cyc_word} {eng['cycles'][10]} / {eng['total_observed_cycles']}")
                 self.assertEqual(len(d.find_elements(By.CSS_SELECTOR, "#engineSelect option")), 8)
 
+    def test_all_eight_engines_render_in_both_languages(self):
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import Select
+        d = self.driver
+        select = Select(d.find_element(By.ID, "engineSelect"))
+        for lang, summary_word in (("it", "RUL stimata"), ("en", "Predicted RUL")):
+            if lang == "en":
+                d.find_element(By.ID, "langBtn").click()
+            for idx, engine in enumerate(self.data["engines"]):
+                with self.subTest(lang=lang, engine=engine["id"]):
+                    select.select_by_index(idx)
+                    self.assertIn(engine["id"], select.first_selected_option.text)
+                    self.assertIn(summary_word, self.text("diagSummary"))
+                    self.assertEqual(self.text("tabAssetBtn"), TAB_LABELS[lang]["tabAssetBtn"])
+                    self.assertEqual(len(d.find_elements(By.CSS_SELECTOR, "#diagBar .diag-seg")), 4)
+
+    def test_live_mode_renders_pushed_edge_summary_and_returns_to_poc(self):
+        from selenium.webdriver.common.by import By
+        from selenium.webdriver.support.ui import Select
+        from selenium.webdriver.support.ui import WebDriverWait
+        update = {
+            "asset_id": "browser-live-asset",
+            "cycle": 912,
+            "predicted_rul": 12.5,
+            "severity": "critical",
+            "subsystem_shares_pct": {"Fan": 5.0, "LPC": 10.0, "HPC": 75.0, "Turbine": 10.0},
+            "top_contributors": [["s3", 50.0], ["s11", 25.0], ["s4", 12.0]],
+            "top_drifting": [["s11", 4.5], ["s3", 3.8], ["s4", -2.0]],
+            "summary": "Live HPC alert from edge node.",
+        }
+        self.assertEqual(http_post_json(self.base + "/api/edge_update", update)[0], 200)
+        d = self.driver
+        Select(d.find_element(By.ID, "modeSelect")).select_by_value("live")
+        WebDriverWait(d, 10).until(lambda drv: self.text("liveCycleVal") == "912")
+        self.assertTrue(d.find_element(By.ID, "livePanel").is_displayed())
+        self.assertFalse(d.find_element(By.ID, "pocReplay").is_displayed())
+        self.assertEqual(self.text("streamBadge"), "Stream Edge Live")
+        self.assertEqual(self.text("liveSummary"), update["summary"])
+        self.assertEqual(len(d.find_elements(By.CSS_SELECTOR, "#liveSubsystemBar .diag-seg")), 4)
+        self.assertEqual(len(d.find_elements(By.CSS_SELECTOR, "#liveContributors li")), 3)
+
+        Select(d.find_element(By.ID, "modeSelect")).select_by_value("poc")
+        self.assertTrue(d.find_element(By.ID, "pocReplay").is_displayed())
+        self.assertFalse(d.find_element(By.ID, "livePanel").is_displayed())
+        self.assertEqual(self.text("streamBadge"), "Replay PoC")
+
+    def test_file_url_replay_loads_all_engines(self):
+        from selenium.webdriver.support.ui import WebDriverWait
+        d = self.driver
+        try:
+            d.get(INDEX_PATH.as_uri())
+            if self.kind != "chrome":
+                d.execute_script(ERROR_HOOK)
+            WebDriverWait(d, 20).until(lambda drv: drv.execute_script(
+                "return document.querySelectorAll('#engineSelect option').length === 8"))
+            self.assertEqual(d.execute_script("return document.documentElement.dataset.replayError || ''"), "")
+            self.assertEqual(self.text("streamBadge"), "Replay PoC")
+        finally:
+            self.load()
+
     def test_lang_toggle_before_data_loaded(self):
         if self.kind != "chrome":
             self.skipTest("needs Chrome DevTools request blocking")
@@ -630,9 +785,9 @@ class DashboardBrowserTest(unittest.TestCase):
         d.execute_cdp_cmd("Network.setBlockedURLs", {"urls": ["*demo_data.json*"]})
         try:
             d.get(self.base + "/")
-            WebDriverWait(d, 10).until(lambda drv: drv.execute_script("return window.__errs.length > 0"))
-            d.execute_script("window.__errs = []")
-            d.get_log("browser")  # drain the expected blocked-request / boot() failure
+            WebDriverWait(d, 10).until(lambda drv: drv.execute_script(
+                "return !!document.documentElement.dataset.replayError"))
+            d.get_log("browser")  # drain the expected blocked request
             d.find_element(By.ID, "langBtn").click()
             self.assertEqual(d.execute_script("return window.__errs"), [])
             self.assertEqual(self.text("tabAssetBtn"), TAB_LABELS["en"]["tabAssetBtn"])
