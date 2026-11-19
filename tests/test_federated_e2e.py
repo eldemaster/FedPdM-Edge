@@ -1,11 +1,15 @@
 """Federated runtime tests: client.SupervisedClient, server.weighted_avg, FL -> edge diagnostics.
 
-Synthetic tests need neither CMAPSSData.zip nor a network. The Flower gRPC loopback test is
-skipped unless CMAPSSData.zip and flwr are available (it spawns server.py + 2 client.py on
-127.0.0.1 with an ephemeral port).
+Loopback tests spawn server.py and clients on an ephemeral localhost port. They use
+CMAPSSData.zip when available, otherwise a tiny synthetic archive. All credentials,
+datasets, results and logs are temporary and every subprocess is reaped on failure.
 """
 import json
+from datetime import datetime, timedelta, timezone
+import ipaddress
 import os
+from pathlib import Path
+import shutil
 import signal
 import socket
 import subprocess
@@ -13,6 +17,8 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
+import zipfile
 
 import numpy as np
 import pandas as pd
@@ -164,6 +170,67 @@ class SupervisedClientTest(unittest.TestCase):
         self.assertEqual(n, len(cl.val_y))
         self.assertEqual(n, 60 - SEQ_LEN + 1)  # one held-out unit
 
+    def test_dp_clips_full_delta_and_reports_configuration(self):
+        cl, _ = make_client(self.df, self.scales, seed=6)
+        cl.dp_clip = 0.025
+        before = snapshot(cl)
+        after, _, metrics = cl.fit(before, {"local_epochs": 1})
+        norm = np.sqrt(sum(np.square(a.astype(np.float64) - b).sum()
+                           for a, b in zip(after, before)))
+        self.assertGreater(norm, 0)
+        self.assertLessEqual(norm, cl.dp_clip)
+        self.assertGreater(norm, 0.99 * cl.dp_clip)  # clipping was exercised
+        self.assertEqual(metrics["dp_clip"], cl.dp_clip)
+        self.assertEqual(metrics["dp_noise_mult"], 0.0)
+        self.assertIs(metrics["tls_enabled"], False)
+        self.assertIs(metrics["mtls_enabled"], False)
+        for actual, transmitted in zip(snapshot(cl), after):
+            np.testing.assert_array_equal(actual, transmitted)
+        # The input global arrays must remain unchanged (no noise or local aliasing).
+        self.assertEqual(max_abs_diff(before, snapshot(make_client(self.df, self.scales, seed=6)[0])), 0)
+
+    def test_dp_noise_is_calibrated_and_not_repeated_by_training_seed(self):
+        cl, _ = make_client(self.df, self.scales, seed=7)
+        cl.dp_clip, cl.dp_noise_mult = 0.05, 0.4
+        reference = snapshot(cl)
+        # Zero training epochs isolates the mechanism: each delta is pure Gaussian noise.
+        first, _, metrics = cl.fit(reference, {"local_epochs": 0})
+        set_seed(7)
+        second, _, _ = cl.fit(reference, {"local_epochs": 0})
+        noise = np.concatenate([(p.astype(np.float64) - g).ravel() for p, g in zip(first, reference)])
+        expected_std = cl.dp_clip * cl.dp_noise_mult
+        self.assertAlmostEqual(float(noise.std()), expected_std, delta=expected_std * 0.05)
+        self.assertAlmostEqual(float(noise.mean()), 0.0, delta=expected_std * 0.05)
+        self.assertGreater(max_abs_diff(first, second), 0)
+        self.assertEqual(metrics["dp_noise_mult"], 0.4)
+
+    def test_dp_disabled_preserves_update_and_small_bound_handles_rounding(self):
+        cl, _ = make_client(self.df, self.scales, seed=7)
+        reference = snapshot(cl)
+        local = [p + 0.1 for p in reference]
+        self.assertIs(cl.protect_update(local, reference), local)
+        cl.dp_clip = 1e-12
+        clipped = cl.protect_update(local, reference)
+        norm = np.sqrt(sum(np.square(p.astype(np.float64) - g).sum()
+                           for p, g in zip(clipped, reference)))
+        self.assertLessEqual(norm, cl.dp_clip)
+
+    def test_dp_validation(self):
+        for clip, noise in ((0, 0), (-1, 0), (float("nan"), 0), (float("inf"), 0),
+                            (1, -1), (1, float("nan")), (1, float("inf")),
+                            (None, 1), (1e308, 1e308)):
+            with self.subTest(clip=clip, noise=noise), self.assertRaises(ValueError):
+                client_mod.validate_dp(clip, noise)
+
+    def test_dp_nonfinite_update_is_not_transmitted(self):
+        cl, _ = make_client(self.df, self.scales, seed=7)
+        cl.dp_clip = 1
+        reference = snapshot(cl)
+        bad = snapshot(cl)
+        bad[0].flat[0] = np.nan
+        with self.assertRaisesRegex(ValueError, "Non-finite"):
+            cl.protect_update(bad, reference)
+
 
 @unittest.skipUnless(HAVE_FLWR, "flwr not installed")
 class WeightedAvgTest(unittest.TestCase):
@@ -180,6 +247,18 @@ class WeightedAvgTest(unittest.TestCase):
 
     def test_empty_list(self):
         self.assertEqual(server_mod.weighted_avg([]), {})
+
+    def test_security_configuration_is_not_averaged(self):
+        a = {"train_time_s": 1.0, "tls_enabled": True, "mtls_enabled": True,
+             "dp_clip": 0.5, "dp_noise_mult": 0.0}
+        b = dict(a, dp_clip=2.0)
+        metrics = server_mod.fit_metrics([(10, a), (30, b)])
+        self.assertNotIn("dp_clip", metrics)
+        self.assertIs(metrics["mtls_enabled"], True)
+        strategy = server_mod.AuditedFedAvg()
+        strategy.client_security = [a, b]
+        self.assertIsNone(strategy.privacy_config()["dp_clip"])
+        self.assertEqual(strategy.privacy_config()["dp_noise_mult"], 0.0)
 
 
 def fedavg(results):
@@ -263,78 +342,317 @@ def _kill(proc):
             proc.wait(timeout=10)
 
 
-@unittest.skipUnless(ZIP and HAVE_FLWR, "CMAPSSData.zip and flwr required for the gRPC loopback test")
+def ephemeral_certificates(directory):
+    """A short-lived CA and distinct server/edge identities; keys never leave tmp."""
+    try:
+        from cryptography import x509
+        from cryptography.hazmat.primitives import hashes, serialization
+        from cryptography.hazmat.primitives.asymmetric import rsa
+        from cryptography.x509.oid import ExtendedKeyUsageOID, NameOID
+    except ImportError:
+        raise unittest.SkipTest("cryptography unavailable for ephemeral TLS certificates")
+    directory = Path(directory)
+    directory.mkdir(parents=True, exist_ok=True)
+    now = datetime.now(timezone.utc)
+    ca_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    ca_name = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, "Ephemeral FedPdM Test CA")])
+
+    def builder(subject, public_key):
+        return (x509.CertificateBuilder().subject_name(subject).issuer_name(ca_name)
+                .public_key(public_key).serial_number(x509.random_serial_number())
+                .not_valid_before(now - timedelta(minutes=5)).not_valid_after(now + timedelta(hours=1)))
+
+    ca = (builder(ca_name, ca_key.public_key())
+          .add_extension(x509.BasicConstraints(ca=True, path_length=0), critical=True)
+          .sign(ca_key, hashes.SHA256()))
+    ca_path = directory / "ca.pem"
+    ca_path.write_bytes(ca.public_bytes(serialization.Encoding.PEM))
+    paths = {"ca": str(ca_path)}
+    for name in ("server", "client1", "client2"):
+        key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, name)])
+        cert = (builder(subject, key.public_key())
+                .add_extension(x509.BasicConstraints(ca=False, path_length=None), critical=True)
+                .add_extension(x509.ExtendedKeyUsage([
+                    ExtendedKeyUsageOID.SERVER_AUTH if name == "server" else ExtendedKeyUsageOID.CLIENT_AUTH
+                ]), critical=False))
+        if name == "server":
+            cert = cert.add_extension(x509.SubjectAlternativeName([
+                x509.DNSName("localhost"), x509.IPAddress(ipaddress.ip_address("127.0.0.1"))
+            ]), critical=False)
+        cert_path, key_path = directory / f"{name}.pem", directory / f"{name}.key"
+        cert_path.write_bytes(cert.sign(ca_key, hashes.SHA256()).public_bytes(serialization.Encoding.PEM))
+        # Open with restrictive permissions from creation, not after writing the key.
+        with os.fdopen(os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600), "wb") as f:
+            f.write(key.private_bytes(serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+                                      serialization.NoEncryption()))
+        paths[name] = (str(cert_path), str(key_path))
+    return paths
+
+
+def synthetic_cmapss(directory):
+    """Use the real entry points without adding a production synthetic-data mode."""
+    directory = Path(directory)
+    frame = synthetic_plant(45)
+    columns = ["unit", "cycle", "setting1", "setting2", "setting3"] + [f"s{i}" for i in range(1, 22)]
+    raw = frame.reindex(columns=columns, fill_value=0).to_csv(sep=" ", header=False, index=False)
+    path = directory / "CMAPSSData.zip"
+    with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+        z.writestr("train_FD002.txt", raw)
+        z.writestr("test_FD002.txt", raw)
+        z.writestr("RUL_FD002.txt", "20\n" * 5)
+    (directory / "global_scale.json").write_text(json.dumps({**scales_of(frame), "train_mean_rul": 30.0}))
+    (directory / "partition.json").write_text(json.dumps({"1": [1, 2], "2": [3, 4]}))
+    return str(path)
+
+
+@unittest.skipUnless(HAVE_FLWR, "flwr required for transport configuration tests")
+class TransportConfigurationTest(unittest.TestCase):
+    def run_script(self, script, args, env=None):
+        clean = {k: v for k, v in os.environ.items()
+                 if not k.startswith(("FL_", "DP_")) and k != "CLIENT_ID"}
+        return subprocess.run([sys.executable, os.path.join(ROOT, script), *args], env={**clean, **(env or {})},
+                              capture_output=True, text=True, timeout=30)
+
+    def test_plaintext_requires_opt_in_and_partial_credentials_fail(self):
+        for script in ("server.py", "client.py"):
+            for args in ([], ["--ca-cert", "absent.pem"], ["--cert", "absent.pem"],
+                         ["--insecure", "--ca-cert", "absent.pem"], ["--unknown-tls-option"]):
+                with self.subTest(script=script, args=args):
+                    result = self.run_script(script, args)
+                    self.assertEqual(result.returncode, 2, result.stderr)
+                    self.assertIn("error:", result.stderr)
+
+    def test_insecure_warning_and_env_conflict(self):
+        result = self.run_script("client.py", ["--insecure"])
+        self.assertNotEqual(result.returncode, 0)  # CLIENT_ID intentionally absent
+        self.assertIn("WARNING: INSECURE plaintext", result.stderr)
+        for script in ("server.py", "client.py"):
+            result = self.run_script(script, ["--insecure"], {"FL_CA_CERT": "absent.pem"})
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("conflicts", result.stderr)
+
+    def test_invalid_dp_cli_and_env_fail_before_loading_data(self):
+        for args, env in ((["--dp-clip", "nan"], {}), (["--dp-clip", "0"], {}),
+                          (["--dp-noise-mult", "1"], {}), ([], {"DP_NOISE_MULT": "-1"})):
+            result = self.run_script("client.py", args, env)
+            self.assertEqual(result.returncode, 2, result.stderr)
+            self.assertIn("dp_", result.stderr)
+
+    def test_pem_validation_and_environment_paths(self):
+        with tempfile.TemporaryDirectory(prefix="fedpdm_tls_config_") as tmp:
+            certs = ephemeral_certificates(tmp)
+            cert, key = certs["server"]
+            with mock.patch.dict(os.environ, {"FL_CA_CERT": certs["ca"], "FL_SERVER_CERT": cert,
+                                               "FL_SERVER_KEY": key}, clear=True):
+                args, loaded = server_mod.transport_args([])
+                self.assertTrue(args.require_client_cert)
+                self.assertEqual(loaded, tuple(Path(p).read_bytes() for p in (certs["ca"], cert, key)))
+                args, _ = server_mod.transport_args(["--no-require-client-cert"])
+                self.assertFalse(args.require_client_cert)
+            for script, role in (("server.py", "server"), ("client.py", "client1")):
+                cert, _ = certs[role]
+                result = self.run_script(script, ["--ca-cert", certs["ca"], "--cert", cert,
+                                                  "--key", certs["client2"][1]])
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertIn("Invalid TLS credentials", result.stderr)
+            bad = Path(tmp) / "bad.pem"
+            bad.write_text("not a certificate")
+            result = self.run_script("server.py", ["--ca-cert", str(bad), "--cert", certs["server"][0],
+                                                    "--key", certs["server"][1]])
+            self.assertEqual(result.returncode, 2, result.stderr)
+
+    def test_scoped_grpc_adapters_restore_on_failure(self):
+        import flwr.common.grpc as flower_grpc
+        with tempfile.TemporaryDirectory(prefix="fedpdm_tls_adapter_") as tmp:
+            certs = ephemeral_certificates(tmp)
+            original = flower_grpc.grpc
+            ca = Path(certs["ca"]).read_bytes()
+            for role, adapter in (("server", server_mod.flower_server_credentials),
+                                  ("client1", client_mod.flower_client_credentials)):
+                cert, key = (Path(p).read_bytes() for p in certs[role])
+                context = adapter((ca, cert, key), True) if role == "server" else adapter((ca, cert, key))
+                with self.assertRaisesRegex(RuntimeError, "test failure"):
+                    with context:
+                        self.assertIsNot(flower_grpc.grpc, original)
+                        if role == "server":
+                            flower_grpc.grpc.ssl_server_credentials(((key, cert),), root_certificates=ca)
+                        else:
+                            flower_grpc.grpc.ssl_channel_credentials(ca)
+                        raise RuntimeError("test failure")
+                self.assertIs(flower_grpc.grpc, original)
+
+
+@unittest.skipUnless(HAVE_FLWR, "flwr required for gRPC loopback tests")
 class FlowerLoopbackTest(unittest.TestCase):
     TIMEOUT_S = 600
 
-    def test_server_and_two_clients_one_round(self):
+    def setUp(self):
+        self.tmp_context = tempfile.TemporaryDirectory(prefix="fedpdm_e2e_")
+        self.addCleanup(self.tmp_context.cleanup)
+        self.tmp = Path(self.tmp_context.name)
+        self.procs, self.logs = [], {}
+        # This cleanup runs before TemporaryDirectory cleanup, even after assertions fail.
+        self.addCleanup(self.stop_processes)
+        self.certs = ephemeral_certificates(self.tmp / "certs")
         port = _free_port()
-        addr = f"127.0.0.1:{port}"
-        base_env = dict(os.environ, SEED="42", CMAPSS_ZIP=ZIP, PYTHONUNBUFFERED="1")
-        procs, logs = [], []
-        with tempfile.TemporaryDirectory(prefix="fedpdm_e2e_") as tmp:
-            def spawn(name, args, env):
-                log = open(os.path.join(tmp, f"{name}.log"), "w+")
-                logs.append(log)
-                p = subprocess.Popen([sys.executable, "-u"] + args, cwd=ROOT, env=env, stdout=log,
-                                     stderr=subprocess.STDOUT, start_new_session=True)
-                procs.append((name, p))
-                return p
+        self.port, self.addr = port, f"127.0.0.1:{port}"
+        self.env = {k: v for k, v in os.environ.items() if not k.startswith(("FL_", "DP_"))}
+        self.env.update(SEED="42", PYTHONUNBUFFERED="1", OMP_NUM_THREADS="1", MKL_NUM_THREADS="1")
+        if ZIP:
+            self.env["CMAPSS_ZIP"] = ZIP
+            for name in ("global_scale.json", "partition.json"):
+                shutil.copyfile(os.path.join(ROOT, name), self.tmp / name)
+        else:
+            self.env["CMAPSS_ZIP"] = synthetic_cmapss(self.tmp)
 
-            def tail(name):
-                for log in logs:
-                    if os.path.basename(log.name) == f"{name}.log":
-                        log.flush()
-                        log.seek(0)
-                        return log.read()[-3000:]
-                return ""
+    def stop_processes(self):
+        for _, proc in self.procs:
+            _kill(proc)
+        for log in self.logs.values():
+            log.close()
 
+    def spawn(self, name, script, args=(), **env):
+        log = open(self.tmp / f"{name}.log", "w+")
+        self.logs[name] = log
+        proc = subprocess.Popen([sys.executable, "-u", os.path.join(ROOT, script), *args],
+                                cwd=self.tmp, env={**self.env, **env}, stdout=log,
+                                stderr=subprocess.STDOUT, start_new_session=True)
+        self.procs.append((name, proc))
+        return proc
+
+    def tail(self, name):
+        log = self.logs[name]
+        log.flush()
+        log.seek(0)
+        return log.read()[-5000:]
+
+    def start_server(self, mode="mtls", env_paths=False):
+        args, env = [], {}
+        if mode == "insecure":
+            args = ["--insecure"]
+        else:
+            cert, key = self.certs["server"]
+            if env_paths:
+                env = {"FL_CA_CERT": self.certs["ca"], "FL_SERVER_CERT": cert, "FL_SERVER_KEY": key}
+            else:
+                args = ["--ca-cert", self.certs["ca"], "--cert", cert, "--key", key]
+            if mode == "tls":
+                args.append("--no-require-client-cert")
+        srv = self.spawn("server", "server.py", args, ROUNDS="1", LOCAL_EPOCHS="1", MIN_CLIENTS="2",
+                         RESULTS_DIR=str(self.tmp), BIND=self.addr, **env)
+        deadline = time.monotonic() + 120
+        while not _port_open(self.port):
+            if srv.poll() is not None:
+                self.fail(f"server exited early ({srv.returncode}):\n{self.tail('server')}")
+            if time.monotonic() > deadline:
+                self.fail(f"server never listened on {self.addr}:\n{self.tail('server')}")
+            time.sleep(0.1)
+        return srv
+
+    def start_clients(self, mode="mtls", env_paths=False):
+        for cid in ("1", "2"):
+            args, env = [], {}
+            if mode == "insecure":
+                args = ["--insecure"]
+            elif mode == "tls":
+                args = ["--ca-cert", self.certs["ca"]]
+            else:
+                cert, key = self.certs[f"client{cid}"]
+                if env_paths:
+                    env = {"FL_CA_CERT": self.certs["ca"], "FL_CLIENT_CERT": cert, "FL_CLIENT_KEY": key}
+                else:
+                    args = ["--ca-cert", self.certs["ca"], "--cert", cert, "--key", key]
+            if env_paths:
+                env.update(DP_CLIP="0.1", DP_NOISE_MULT="0.02")
+            else:
+                args.extend(["--dp-clip", "0.1", "--dp-noise-mult", "0"])
+            self.spawn(f"client{cid}", "client.py", args, CLIENT_ID=cid, FL_SERVER=self.addr, **env)
+
+    def assert_completed(self, tls_enabled, mtls_enabled, noise=0.0):
+        end = time.monotonic() + self.TIMEOUT_S
+        for name, proc in self.procs:
             try:
-                srv = spawn("server", ["server.py"],
-                            dict(base_env, ROUNDS="1", LOCAL_EPOCHS="1", MIN_CLIENTS="2",
-                                 RESULTS_DIR=tmp, BIND=addr))
-                deadline = time.time() + 120
-                while not _port_open(port):
-                    if srv.poll() is not None:
-                        self.fail(f"server exited early ({srv.returncode}):\n{tail('server')}")
-                    if time.time() > deadline:
-                        self.fail(f"server never listened on {addr}:\n{tail('server')}")
-                    time.sleep(0.5)
-                # client.py reads its identity/endpoint from CLIENT_ID / FL_SERVER env vars.
-                for cid in ("1", "2"):
-                    spawn(f"client{cid}", ["client.py"], dict(base_env, CLIENT_ID=cid, FL_SERVER=addr))
+                proc.wait(timeout=max(1, end - time.monotonic()))
+            except subprocess.TimeoutExpired:
+                self.fail(f"{name} timed out after {self.TIMEOUT_S}s:\n{self.tail(name)}")
+            self.assertEqual(proc.returncode, 0, f"{name} exit {proc.returncode}:\n{self.tail(name)}")
+        path = self.tmp / "results_physical_seed42.json"
+        self.assertTrue(path.is_file(), list(self.tmp.iterdir()))
+        res = json.loads(path.read_text())
+        self.assertEqual(res["config"]["seed"], 42)
+        self.assertEqual(res["config"]["rounds"], 1)
+        self.assertIs(res["config"]["tls_enabled"], tls_enabled)
+        self.assertIs(res["config"]["mtls_enabled"], mtls_enabled)
+        self.assertEqual(res["config"]["dp_clip"], 0.1)
+        self.assertEqual(res["config"]["dp_noise_mult"], noise)
+        mc = res["metrics_centralized"]
+        self.assertEqual(len(mc["model_rmse"]), 2)
+        for key in ("model_rmse", "baseline_rmse", "nasa_score"):
+            for _, value in mc[key]:
+                self.assertTrue(np.isfinite(value), key)
+        mf = res["metrics_distributed_fit"]
+        for key in ("train_time_s", "peak_rss_mb", *server_mod.SECURITY_KEYS):
+            self.assertIn(key, mf)
+            self.assertEqual(len(mf[key]), 1)
+            self.assertTrue(np.isfinite(mf[key][0][1]))
+        self.assertEqual(len(res["client_security"]), 2)
+        self.assertEqual(len({r["client_id"] for r in res["client_security"]}), 2)
+        for record in res["client_security"]:
+            self.assertIs(record["tls_enabled"], tls_enabled)
+            self.assertIs(record["mtls_enabled"], mtls_enabled)
+            self.assertEqual(record["dp_clip"], 0.1)
+            self.assertEqual(record["dp_noise_mult"], noise)
 
-                end = time.time() + self.TIMEOUT_S
-                for name, p in procs:
-                    try:
-                        p.wait(timeout=max(1, end - time.time()))
-                    except subprocess.TimeoutExpired:
-                        self.fail(f"{name} timed out after {self.TIMEOUT_S}s:\n{tail(name)}")
-                for name, p in procs:
-                    self.assertEqual(p.returncode, 0, f"{name} exit {p.returncode}:\n{tail(name)}")
-            finally:
-                for _, p in procs:
-                    _kill(p)
-                for log in logs:
-                    log.close()
+    def test_server_and_two_clients_one_round(self):
+        self.start_server("insecure")
+        self.start_clients("insecure")
+        self.assert_completed(False, False)
+        for name, _ in self.procs:
+            self.assertIn("WARNING: INSECURE plaintext", self.tail(name))
 
-            path = os.path.join(tmp, "results_physical_seed42.json")
-            self.assertTrue(os.path.isfile(path), os.listdir(tmp))
-            with open(path) as f:
-                res = json.load(f)
-            self.assertEqual(res["config"]["seed"], 42)
-            self.assertEqual(res["config"]["rounds"], 1)
-            mc = res["metrics_centralized"]
-            self.assertIn("model_rmse", mc)
-            self.assertEqual(len(mc["model_rmse"]), 2)  # round 0 (initial) + round 1
-            for key in ("model_rmse", "baseline_rmse", "nasa_score"):
-                for _, v in mc[key]:
-                    self.assertTrue(np.isfinite(v), key)
-            mf = res["metrics_distributed_fit"]
-            for key in ("train_time_s", "peak_rss_mb"):
-                self.assertIn(key, mf)
-                self.assertEqual(len(mf[key]), 1)
-                self.assertTrue(np.isfinite(mf[key][0][1]))
+    def test_mtls_server_and_two_clients_one_round(self):
+        self.start_server()
+        self.start_clients()
+        self.assert_completed(True, True)
+
+    def test_mtls_environment_paths_and_dp_noise(self):
+        self.start_server(env_paths=True)
+        self.start_clients(env_paths=True)
+        self.assert_completed(True, True, noise=0.02)
+
+    def test_explicit_server_only_tls(self):
+        self.start_server("tls")
+        self.start_clients("tls")
+        self.assert_completed(True, False)
+
+    def test_mtls_rejects_missing_untrusted_identity_and_untrusted_server(self):
+        import grpc
+        server = self.start_server()
+        rogue = ephemeral_certificates(self.tmp / "rogue")
+        ca = Path(self.certs["ca"]).read_bytes()
+        good_cert, good_key = (Path(p).read_bytes() for p in self.certs["client1"])
+        bad_cert, bad_key = (Path(p).read_bytes() for p in rogue["client1"])
+        for name, credentials in (
+            ("missing client certificate", grpc.ssl_channel_credentials(root_certificates=ca)),
+            ("untrusted client certificate", grpc.ssl_channel_credentials(
+                root_certificates=ca, private_key=bad_key, certificate_chain=bad_cert)),
+            ("untrusted server", grpc.ssl_channel_credentials(
+                root_certificates=Path(rogue["ca"]).read_bytes(), private_key=good_key,
+                certificate_chain=good_cert)),
+        ):
+            with self.subTest(name=name), grpc.secure_channel(self.addr, credentials) as channel:
+                # An actual RPC must fail, not merely an idle TCP readiness probe.
+                from flwr.proto.transport_pb2_grpc import FlowerServiceStub
+                from flwr.proto.transport_pb2 import ClientMessage
+                with self.assertRaises(grpc.RpcError) as caught:
+                    next(FlowerServiceStub(channel).Join(iter([ClientMessage()]), timeout=3))
+                self.assertEqual(caught.exception.code(), grpc.StatusCode.UNAVAILABLE)
+            self.assertIsNone(server.poll(), self.tail("server"))
+            self.assertFalse((self.tmp / "results_physical_seed42.json").exists())
+        # Recovery proves rejection did not break the listener or admit a rogue node.
+        self.start_clients()
+        self.assert_completed(True, True)
 
 
 if __name__ == "__main__":
