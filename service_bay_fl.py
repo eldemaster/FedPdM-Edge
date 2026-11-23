@@ -158,6 +158,9 @@ def personalize_at_service_bay(global_weights: Mapping[str, torch.Tensor], train
     if freeze_backbone:
         for name, parameter in model.named_parameters():
             parameter.requires_grad_(name.startswith("fc1") or name.startswith("fc2"))
+    # CmapssRegressor produces (batch,) values; align scalar labels to prevent
+    # MSELoss from broadcasting (batch, 1) against (batch,).
+    train_y = np.asarray(train_y, dtype=np.float32).reshape(-1)
     loader = make_loader(train_x, train_y, batch_size=batch_size, seed=seed)
     optimizer = torch.optim.Adam((p for p in model.parameters() if p.requires_grad), lr=learning_rate)
     criterion = loss_fn or nn.MSELoss()

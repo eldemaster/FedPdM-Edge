@@ -89,6 +89,15 @@ class ServiceBayPrimitiveTests(unittest.TestCase):
             if key.startswith("conv"):
                 self.assertTrue(torch.equal(personalized[key], original[key]), key)
 
+    def test_training_flattens_column_targets_to_match_model_output(self):
+        from experiments.service_bay_benchmark import _train
+        state = CmapssRegressor().state_dict()
+        x = np.random.RandomState(3).normal(
+            size=(4, SEQ_LEN, len(USEFUL_SENSORS))).astype(np.float32)
+        y = np.asarray([[10.0], [20.0], [30.0], [40.0]], dtype=np.float32)
+        updated = _train(state, x, y, seed=3, epochs=1, lr=1e-3, batch_size=4)
+        self.assertTrue(all(torch.isfinite(value).all() for value in updated.values()))
+
 
 class ServiceBayScheduleTests(unittest.TestCase):
     def test_vehicle_disjointness_and_partial_visits(self):

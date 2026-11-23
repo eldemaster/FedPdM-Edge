@@ -62,7 +62,10 @@ def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=Fa
     if str(device).startswith("xpu") and hasattr(torch, "xpu"):
         torch.xpu.manual_seed_all(seed)
     model = CmapssRegressor(); model.load_state_dict(state); model.to(device)
-    loader = make_loader(x, y, batch_size=batch_size, seed=seed)
+    # The regressor returns (batch,), so keep scalar targets one-dimensional
+    # too. (batch, 1) labels would broadcast MSE to a batch-by-batch matrix.
+    loader = make_loader(x, np.asarray(y, dtype=np.float32).reshape(-1),
+                         batch_size=batch_size, seed=seed)
     optimizer = (torch.optim.SGD(model.parameters(), lr=lr) if client_control is not None
                  else torch.optim.Adam(model.parameters(), lr=lr))
     model.train()
