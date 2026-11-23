@@ -463,13 +463,15 @@ class TransportConfigurationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 2, result.stderr)
 
     def test_scoped_grpc_adapters_restore_on_failure(self):
-        import flwr.common.grpc as flower_grpc
         with tempfile.TemporaryDirectory(prefix="fedpdm_tls_adapter_") as tmp:
             certs = ephemeral_certificates(tmp)
-            original = flower_grpc.grpc
             ca = Path(certs["ca"]).read_bytes()
-            for role, adapter in (("server", server_mod.flower_server_credentials),
-                                  ("client1", client_mod.flower_client_credentials)):
+            for role, resolve, adapter in (
+                ("server", server_mod.flower_server_grpc_module, server_mod.flower_server_credentials),
+                ("client1", client_mod.flower_client_grpc_module, client_mod.flower_client_credentials),
+            ):
+                flower_grpc = resolve()
+                original = flower_grpc.grpc
                 cert, key = (Path(p).read_bytes() for p in certs[role])
                 context = adapter((ca, cert, key), True) if role == "server" else adapter((ca, cert, key))
                 with self.assertRaisesRegex(RuntimeError, "test failure"):
@@ -481,6 +483,21 @@ class TransportConfigurationTest(unittest.TestCase):
                             flower_grpc.grpc.ssl_channel_credentials(ca)
                         raise RuntimeError("test failure")
                 self.assertIs(flower_grpc.grpc, original)
+
+    def test_unsupported_flower_tls_implementation_refuses_downgrade(self):
+        with tempfile.TemporaryDirectory(prefix="fedpdm_tls_unsupported_") as tmp:
+            certs = ephemeral_certificates(tmp)
+            ca = Path(certs["ca"]).read_bytes()
+            scert, skey = (Path(p).read_bytes() for p in certs["server"])
+            ccert, ckey = (Path(p).read_bytes() for p in certs["client1"])
+            with mock.patch.object(flwr.server, "start_server", lambda **kwargs: None):
+                with self.assertRaisesRegex(RuntimeError, "Unsupported Flower"):
+                    with server_mod.flower_server_credentials((ca, scert, skey), True):
+                        pass
+            with mock.patch.object(flwr.client, "start_client", lambda **kwargs: None):
+                with self.assertRaisesRegex(RuntimeError, "Unsupported Flower"):
+                    with client_mod.flower_client_credentials((ca, ccert, ckey)):
+                        pass
 
 
 @unittest.skipUnless(HAVE_FLWR, "flwr required for gRPC loopback tests")

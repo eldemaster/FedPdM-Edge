@@ -45,23 +45,53 @@ def transport_args(argv=None):
     return args, certificates
 
 
+def flower_server_grpc_module():
+    """Resolve and validate the Flower gRPC credential module used by start_server."""
+    start_server = inspect.unwrap(fl.server.start_server)
+    if "certificates" not in inspect.signature(fl.server.start_server).parameters:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    start_server_mod = inspect.getmodule(start_server)
+    start_grpc_server = getattr(start_server_mod, "start_grpc_server", None)
+    try:
+        start_server_src = inspect.getsource(start_server)
+    except (OSError, TypeError) as exc:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation") from exc
+    if start_grpc_server is None or "start_grpc_server(" not in start_server_src:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+
+    start_grpc_server = inspect.unwrap(start_grpc_server)
+    grpc_server_mod = inspect.getmodule(start_grpc_server)
+    factory = getattr(grpc_server_mod, "generic_create_grpc_server", None)
+    try:
+        start_grpc_src = inspect.getsource(start_grpc_server)
+        factory_src = inspect.getsource(inspect.unwrap(factory)) if factory is not None else ""
+    except (OSError, TypeError) as exc:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation") from exc
+    if (factory is None
+            or "generic_create_grpc_server(" not in start_grpc_src
+            or "grpc.ssl_server_credentials(" not in factory_src):
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+
+    flower_grpc = inspect.getmodule(inspect.unwrap(factory))
+    if (flower_grpc is None or not hasattr(flower_grpc, "grpc")
+            or not hasattr(flower_grpc.grpc, "ssl_server_credentials")):
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    return flower_grpc
+
+
 @contextmanager
 def flower_server_credentials(certificates, require_client_cert):
-    """Adapt Flower 1.22's gRPC factory, which hardcodes require_client_auth=False.
+    """Adapt Flower's gRPC server factory, which hardcodes require_client_auth=False.
 
     start_server(certificates=...) remains the entry point. Replace only the grpc
-    reference in Flower's credential module, for this process's single server.
+    reference in Flower's resolved credential module, for this process's single server.
     Restore it even on failure; never change grpc's global credential factory.
     Refuse an unknown implementation instead of silently running one-way TLS.
     """
     if certificates is None:
         yield
         return
-    import flwr.common.grpc as flower_grpc
-    factory = flower_grpc.generic_create_grpc_server
-    if ("certificates" not in inspect.signature(fl.server.start_server).parameters
-            or "grpc.ssl_server_credentials(" not in inspect.getsource(factory)):
-        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    flower_grpc = flower_server_grpc_module()
     original = flower_grpc.grpc
 
     def credentials(private_key_certificate_chain_pairs, root_certificates=None,
