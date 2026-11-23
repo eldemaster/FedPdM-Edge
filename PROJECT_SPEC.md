@@ -2,7 +2,7 @@
 
 This document explains the checked-in project as it exists on `master`, including its research benchmark, Flower training demo, streaming edge runtime, privacy controls, dashboard, paper pipeline, and verification gates. It distinguishes implemented code from components that are present but not yet wired together.
 
-**Source snapshot:** `master` at `9ce6367` (merge of PR #22). Source paths and API names below refer to that tree. Test counts are exact counts of `test_*` methods and test classes in the eight listed `tests/test_*.py` files. The checked-in `docs/PILOT_RUNBOOK.md` and parts of the manuscript still contain pre-PR descriptions; their drift is called out below rather than repeated as current implementation.
+**Source snapshot:** `master` at `bb27348` (merge of PR #26, including PR #25). Source paths and API names below refer to that tree. Test counts are exact counts of `test_*` methods and test classes in all ten checked-in `tests/test_*.py` files. The checked-in `docs/PILOT_RUNBOOK.md` and parts of the manuscript still contain pre-PR descriptions; their drift is called out below rather than repeated as current implementation.
 
 ## 1. Start here: what this project does
 
@@ -14,7 +14,9 @@ The codebase has several related but separate paths:
 |---|---|---|
 | `server.py` + `client.py` | Flower/gRPC federated training against FD002 | TLS/mTLS and optional client-update clipping/noise are implemented. The server strategy is FedAvg; clients can add a FedProx local penalty. |
 | `fed_sim.py`, `experiments/reproduce.py` | In-process experiments and benchmark comparisons | These are simulations; they do not exercise the Flower network transport. |
+| `experiments/vehicle_swarm_benchmark.py` | Strictly vehicle-disjoint, partially participating customer-fleet simulation | Runs `K=10` and `K=20` swarms with IID, lifespan/quantity-skewed, and regime/drift-skewed partitions; compares local-only, FedAvg, FedProx, asymmetric-loss, and personalized variants. It does not exercise Flower transport. |
 | `fed_norm.py` | Federated aggregation of channel statistics and telemetry sanitation | Implemented as a reusable module with tests. It is not currently called by `client.py` or `edge_runtime.py`. |
+| `vehicle_datasets.py` | Opt-in vehicle-fleet dataset contract, adapters, and flexible CNN | Implements combined C-MAPSS, Scania Component X, and N-CMAPSS adapters without downloading data or changing the baseline pipeline. Only C-MAPSS was locally available for real-data verification; external-adapter tests use synthetic schema fixtures. |
 | `edge_runtime.py` + `diagnostics.py` | Streaming/replayed local inference, diagnostics, and debounced alerts | Implemented. The runner uses the existing `common.load_scales()` interface; it does not yet consume a `FederatedScaler` directly. |
 | `dashboard/` | Offline PoC replay and a live summary API | Implemented with a standard-library HTTP server. Live updates are in-memory summaries, not a durable monitoring service. |
 
@@ -122,6 +124,19 @@ The defaults are `alpha_late=2.5` and `alpha_early=0.5`, both positive. The loss
 
 The experiment suite also contains a capped-exponent score-aware training ablation. Do not confuse that objective with the quadratic `AsymmetricRULLoss`, or either training loss with the uncapped NASA evaluation metric.
 
+### 3.4 Vehicle-fleet dataset contract and adapters (`vehicle_datasets.py`)
+
+`VehicleFleetDataset` keeps one time-ordered frame and metadata record per anonymous vehicle. It exposes `feature_cols`, `setting_cols`, optional official endpoint `test_ruls`, whole-vehicle `partition_by()`, and `windows()`. Window construction is vehicle-local and causal: it sanitizes only the observed portion of each window, omits unknown targets, left-pads short `last_only=True` histories, and returns `float32` arrays shaped `(N, W, C)` and `(N,)`. Vehicles must be partitioned before windows or training scalers are constructed.
+
+| Adapter / symbol | Implemented contract | Evidence boundary |
+|---|---|---|
+| `CmapssCombinedAdapter` | Loads FD001–FD004 with collision-free IDs such as `FD002-train-U001`; supports train, test, or both splits and subset grouping. The local archive contains **709 training engines and 707 official test engines** across the four subsets. | Combining subsets increases the controlled simulated fleet and mixes experimental populations. It does not create 709 real vehicles or real customer ownership. |
+| `ScaniaComponentXAdapter` | Reads the published commercial heavy-truck CSV schema: 105 operational features, eight categorical specifications, irregular `time_step`, repair events, censoring, and validation/test interval classes. `partition_by_specifications()` forms whole-truck cohorts. | Scania data was not downloaded or benchmarked here. Censored trucks retain lower bounds and do not produce invented point-RUL targets. Specifications are cohort proxies, not customer IDs or proof of one chassis model. |
+| `NCMAPSSAdapter` | Reads official `W`, `X_s`, optional `X_v`, `T`, `Y`, and `A` HDF5 arrays; partitions whole engines by flight class. Physical health parameters and health-state metadata remain outside model features. | N-CMAPSS data was not downloaded or benchmarked here. Its component-health truth comes from simulated degradation under recorded flight envelopes, not observed vehicle failures. The eager DataFrame adapter is not out-of-core training. |
+| `build_flexible_cnn(in_channels, seq_len)` | Reuses the baseline Conv32/Conv64/FC32 forward path with configurable channel count and sequence length. At `(17, 30)` it has state-dict and output parity with `CmapssRegressor` and **22,273 parameters**. | All clients in one federated run still need identical feature order, channel count, and sequence length. Arbitrary-channel support does not make different dataset schemas directly aggregatable. |
+
+`docs/DATASET_EVALUATION.md` records provenance, schemas, licenses, download locations, target semantics, memory limits, and the adapter examples. The external Scania and N-CMAPSS fixtures in `tests/test_vehicle_datasets.py` are explicitly synthetic schema tests; a successful optimizer step proves interface compatibility, not predictive validity.
+
 ## 4. Algorithms and the reason for the current choices
 
 ### 4.1 Design Rationale Cheat-Sheet
@@ -138,6 +153,16 @@ The experiment suite also contains a capped-exponent score-aware training ablati
 ### 4.2 Federated averaging and FedProx
 
 In the Flower demo, `server.py` configures `flwr.server.strategy.FedAvg` with all configured clients participating in fit and evaluation. Client updates are weighted by the number of local training examples. A positive `PROXIMAL_MU` value configures `common.train_epochs()` to add `mu/2 * ||w - w_global||²` to each local batch objective. A zero value disables the proximal term. The `fed_sim.py` and `experiments/reproduce.py` paths test additional methods, including FedAdam, but those are local experiments rather than the Flower transport path.
+
+### 4.3 Vehicle-swarm benchmark (`experiments/vehicle_swarm_benchmark.py`)
+
+The vehicle-swarm benchmark models one manufacturer coordinating customer fleets while preserving the vehicle boundary. Every C-MAPSS unit belongs to exactly one client; train/validation splitting then uses whole vehicles. The committed configurations are FD002 with `K=10`, FD004 with `K=10`, and FD004 with `K=20`. Per round, deterministic partial participation selects exactly `round(K * fraction_fit)` clients: 5 of 10 at `fraction_fit=0.5`, or 6 of 20 at `fraction_fit=0.3`.
+
+The three partition schemes are `iid_swarm`, `lifespan_quantity_skew`, and `regime_fault_skew`. Lifespan/quantity skew draws client fleet sizes from a Dirichlet distribution with `alpha=0.5` and assigns ordered lifespan bands. Regime/drift skew fits six operating-setting clusters and draws each profile's allocation with Dirichlet `alpha=0.3`; FD004 adds a label-free two-cluster end-of-life drift grouping. That grouping is not a component-fault label. The JSON reports vehicle counts, supervised-window count CV and Gini, pairwise lifespan/regime/drift Jensen-Shannon divergence, allocation entropy, and a combined heterogeneity score. Both intended Non-IID schemes have a strictly higher combined score than IID in every committed configuration.
+
+The compared methods are `local_only`, `fedavg_mse`, `fedprox_mse`, `fedavg_asym`, `fedprox_asym`, and `fedavg_asym_personalized`. The bounded protocol uses five seeds (`7`, `42`, `100`, `777`, `2024`), five rounds, one local epoch, at most 512 training windows and 128 validation windows per client, `mu=0.05`, and two local personalization epochs at one-quarter of the training learning rate. Federated normalization calls `compute_local_stats()` inside each fleet and gives the server only `LocalStats` objects; every recorded run reports `raw_sensor_rows_shared: 0`. This is a code-path audit, not secure aggregation or a formal privacy proof.
+
+Across the nine dataset/client-count/partition configurations, asymmetric FedAvg lowers mean late-prediction rate from the MSE model's 0.46–0.52 range to 0.33–0.35 and lowers NASA score per test vehicle from 282–834 to 102–144, while increasing symmetric RMSE by 2.3–6.4 cycles. `FedProx(mu=0.05)` is indistinguishable at the displayed precision in this short protocol. Customer fine-tuning improves matched-client mean validation RMSE in eight of nine configurations, but worsens some worst-client results; personalization must therefore be gated rather than assumed beneficial. Exact per-seed partitions, participants, trajectories, metrics, and aggregates are in `results/vehicle_swarm_benchmark.json`; the rounded interpretation is in `docs/vehicle_swarm.md`.
 
 ## 5. Federated normalization and signal hygiene (`fed_norm.py`)
 
@@ -164,7 +189,7 @@ The implementation applies these elementwise per channel and merges minima/maxim
 
 ### 5.3 Why the legacy path remains
 
-`experiments/reproduce.py` intentionally retains its established centralized scaling path for benchmark continuity: changing preprocessing would change the experiment protocol and invalidate direct comparison with its tracked results. The Flower demo also continues to load the committed `global_scale.json`. `fed_norm.py` includes a parity probe, but neither this module nor `sanitize_telemetry_frame()` is automatically inserted into `reproduce.py`, `client.py`, or `EdgeInferenceRunner`. Connecting it requires an explicit deployment/experiment integration decision and corresponding validation.
+`experiments/reproduce.py` intentionally retains its established centralized scaling path for benchmark continuity: changing preprocessing would change the experiment protocol and invalidate direct comparison with its tracked results. The Flower demo also continues to load the committed `global_scale.json`. The separate vehicle-swarm benchmark does use `compute_local_stats()`, `aggregate_federated_stats()`, and `FederatedScaler` to demonstrate decentralized normalization across simulated fleets. `fed_norm.py` includes a parity probe, but neither the scaler nor `sanitize_telemetry_frame()` is automatically inserted into `reproduce.py`, `client.py`, or `EdgeInferenceRunner`. Connecting it to those operational paths requires an explicit deployment/experiment integration decision and corresponding validation.
 
 ## 6. Streaming edge runtime and local diagnostics
 
@@ -225,11 +250,11 @@ CMAPSS_ZIP=/path/to/CMAPSSData.zip python3 dashboard/generate_demo_data.py
 
 `paper/main.tex` is an IEEEtran manuscript whose sole listed author is Alessandro De Martini, with a Mid Sweden University affiliation and the ResilientEdge acknowledgement. The paper covers the paired RUL benchmark, asymmetric-risk loss, local attribution/drift method, its evaluation boundary, and generated local-diagnostics results/tables. It uses `paper/make_figures.py` to regenerate scalar macros and tables under `paper/generated/` from committed result artifacts. `paper/Makefile` runs the generator and then `latexmk -pdf main.tex`; generated files should not be edited manually.
 
-There is exactly one open `\todo{...}` marker in the current `paper/*.tex` source: `\todo{AI-use disclosure pending}` in `paper/main.tex`. No co-author or affiliation TODO remains. The manuscript's prose has not been fully reconciled with PRs #17–#22: in particular, `paper/sections/architecture.tex`, `paper/sections/related_work.tex`, and `paper/sections/setup.tex` still say TLS/mTLS, DP, and federated normalization are absent. Treat source code as authoritative for implementation status; those manuscript statements are known documentation drift. This spec update does not alter `paper/`.
+There is exactly one open `\todo{...}` marker in the current `paper/*.tex` source: `\todo{AI-use disclosure pending}` in `paper/main.tex`. No co-author or affiliation TODO remains. The manuscript's prose has not been fully reconciled with PRs #17–#26: in particular, `paper/sections/architecture.tex`, `paper/sections/related_work.tex`, and `paper/sections/setup.tex` still say TLS/mTLS, DP, and federated normalization are absent, and the paper does not cover the new vehicle-swarm or vehicle-dataset work. Treat source code as authoritative for implementation status; those manuscript statements are known documentation drift. This spec update does not alter `paper/`.
 
 ### 7.3 Test suites: exact current inventory
 
-All eight files use `unittest`. The table reports **test classes / methods whose names start with `test_`**, counted directly from the checked-in files.
+All ten files use `unittest`. The table reports **test classes / methods whose names start with `test_`**, counted directly from the checked-in files.
 
 | File | Classes / methods | Main coverage |
 |---|---:|---|
@@ -241,7 +266,9 @@ All eight files use `unittest`. The table reports **test classes / methods whose
 | `tests/test_federated_norm.py` | **3 / 6** | Federated stats/parity and telemetry sanitation. |
 | `tests/test_edge_runtime.py` | **5 / 9** | Rolling-window buffering, alert hysteresis, end-to-end safe JSONL alert, and injected MQTT behavior. |
 | `tests/test_preflight.py` | **3 / 5** | Symlink detection, dashboard/diagnostics JSON invariants, and fast preflight command. |
-| **Total** | **42 / 131** | Exact static inventory; runtime skips depend on available data and optional tools. |
+| `tests/test_vehicle_swarm.py` | **4 / 6** | Exhaustive/disjoint vehicle partitions, measured Non-IID skew, deterministic partial participation, `LocalStats`-only normalization, all-method synthetic smoke, and a C-MAPSS-gated FD002 round. |
+| `tests/test_vehicle_datasets.py` | **5 / 15** | Flexible-CNN parity/dimensions, Scania schema/censoring/causal windows, N-CMAPSS HDF5/feature isolation, and combined C-MAPSS counts/split isolation. |
+| **Total** | **51 / 152** | Exact static inventory; runtime skips depend on available data and optional tools. |
 
 Run the suite with `python3 -m unittest discover -s tests -v`. C-MAPSS-gated tests require a valid `CMAPSS_ZIP`; browser checks can depend on Selenium/driver availability. Test count is a source inventory, not a claim that every gated integration test ran in a given environment.
 
@@ -262,6 +289,8 @@ Run the suite with `python3 -m unittest discover -s tests -v`. C-MAPSS-gated tes
 | Dashboard | `python3 dashboard/server.py [--host HOST] [--port PORT] [--no-browser]`. |
 | Artifact preflight | `python3 scripts/preflight_check.py [--skip-unittest] [--with-cmapss]`. |
 | Paired research suite | `python3 experiments/reproduce.py --data PATH --out DIR [--threads N]`; `--summarize-only` and `--quick` are also defined by that script. |
+| Vehicle-swarm benchmark | `CMAPSS_ZIP=/path/to/CMAPSSData.zip python3 experiments/vehicle_swarm_benchmark.py`; optional flags are `--output PATH`, `--rounds N`, `--max-train-sequences N`, `--max-val-sequences N`, `--seeds ...`, and `--synthetic-smoke`. |
+| Vehicle dataset tests | `python3 -m unittest tests/test_vehicle_datasets.py -v`; set `CMAPSS_ZIP` to enable the archive integration case, and install optional `h5py` to enable HDF5 fixture cases. |
 
 ## 8. Repository map and current status
 
@@ -278,6 +307,11 @@ Run the suite with `python3 -m unittest discover -s tests -v`. C-MAPSS-gated tes
 | `diagnostics.py` | `HealthyBaseline`, `fit_healthy_baseline`, attribution methods, `EdgeDiagnostics`, maintenance summaries and evaluation boundary. |
 | `fed_sim.py` | Local FedAvg/FedProx simulation, separate from networked Flower transport. |
 | `experiments/reproduce.py` | Paired FD001–FD004 experiments, centralized preprocessing, partitions, CNN/CNN-LSTM and aggregation/loss comparisons. |
+| `experiments/vehicle_swarm_benchmark.py` | Strictly vehicle-disjoint `K=10`/`K=20` partial-participation benchmark, Non-IID partitions, decentralized normalization, six method variants, personalization, and heterogeneity metrics. |
+| `results/vehicle_swarm_benchmark.json` | Complete five-seed vehicle-swarm artifact: exact partitions, selected clients, round histories, global/client metrics, personalization, and heterogeneity aggregates. |
+| `docs/vehicle_swarm.md` | Protocol, rounded benchmark tables, interpretation, caveats, and reproduction command for the vehicle swarm. |
+| `vehicle_datasets.py` | `VehicleFleetDataset`, `build_flexible_cnn`, `CmapssCombinedAdapter`, `ScaniaComponentXAdapter`, `NCMAPSSAdapter`, and synthetic Scania schema-fixture generator. |
+| `docs/DATASET_EVALUATION.md` | Dataset decision matrix, provenance, exact schemas, licensing/download notes, adapter contract, and evidence boundaries for C-MAPSS, Scania Component X, N-CMAPSS, and rejected/next-step alternatives. |
 | `dashboard/server.py` | Standard-library static/API server: `/api/health`, `/api/edge_update`, `/api/live`. |
 | `dashboard/generate_demo_data.py` | Offline demo snapshot generator; requires C-MAPSS data to regenerate. |
 | `dashboard/index.html` | PoC Replay / Live Edge Stream interface, three tabs, English/Italian copy. |
@@ -293,9 +327,11 @@ Run the suite with `python3 -m unittest discover -s tests -v`. C-MAPSS-gated tes
 | `tests/test_federated_norm.py` | Federated statistics and telemetry sanitation tests. |
 | `tests/test_edge_runtime.py` | Streaming buffer, alerting and source-to-sink tests. |
 | `tests/test_preflight.py` | Preflight checks. |
+| `tests/test_vehicle_swarm.py` | Vehicle partition, heterogeneity, participation, decentralized normalization, method, and real-data smoke tests. |
+| `tests/test_vehicle_datasets.py` | Flexible-CNN and combined C-MAPSS/Scania/N-CMAPSS adapter tests. |
 | `paper/main.tex`, `paper/sections/*.tex` | IEEE manuscript and its method/results. Some security/preprocessing descriptions have not caught up with code. |
 | `paper/make_figures.py`, `paper/generated/` | Reproducible macros/tables generated from committed artifacts. |
-| `docs/` | Project and pilot documentation; consult §7.3 for known drift. |
+| `docs/` | Project and pilot documentation; consult §8.2 for known drift. |
 | `results/`, `experiments/` | Research inputs and outputs; unchanged by this specification. |
 
 ### 8.2 Implemented capabilities and remaining limits
@@ -304,16 +340,18 @@ Run the suite with `python3 -m unittest discover -s tests -v`. C-MAPSS-gated tes
 |---|---|
 | **mTLS / transport** | Implemented in the Flower path. Server TLS and client-authentication are required by default when not using explicit `--insecure`; server-only TLS is an explicit opt-out. No silent plaintext fallback. |
 | **Update privacy** | Optional full-client-delta L2 clipping and Gaussian noise are implemented. There is no formal epsilon/delta accountant, no configured privacy budget, and no secure aggregation. The coordinator can see individual client updates. |
-| **Federated normalization** | `fed_norm.py` implements tested Chan/Welford sufficient-statistics aggregation, transforms and sanitation. The production-like Flower client and current edge runner still use legacy centralized scales; integration remains open. Statistics themselves can reveal information and are not protected by secure aggregation. |
+| **Federated normalization** | `fed_norm.py` implements tested Chan/Welford sufficient-statistics aggregation, transforms and sanitation, and the vehicle-swarm benchmark uses it for decentralized fleet normalization. The production-like Flower client, paired experiment suite, and current edge runner still use legacy centralized scales; operational integration remains open. Statistics themselves can reveal information and are not protected by secure aggregation. |
 | **Streaming inference** | JSONL, CSV replay and optional MQTT source adapters, bounded rolling windows, local inference, diagnostics and severity hysteresis are implemented. Plant-specific PLC/OPC-UA acquisition, calibrated cadence and deployment supervision are not included. |
 | **Live dashboard API** | Summary POST and live GET endpoints are implemented. The API is in-memory, has no authentication or persistence, and should be deployed only on a suitably restricted interface/network. Raw telemetry field names are rejected. |
 | **CI / preflight** | `.github/workflows/ci.yml` runs the unit suite and preflight on master pushes and pull requests. `scripts/preflight_check.py` checks symlinks and pinned artifact/schema invariants. |
 | **C-MAPSS vs plant data** | C-MAPSS is a public turbofan benchmark, not a partner plant dataset. Asset schema mapping, time/cadence calibration, data quality policy and validation on real plant failures remain necessary. No automatic shutdown/control action is implemented or appropriate. |
 | **Hardware evidence** | Physical Flower runs on Raspberry Pi clients exist in committed research artifacts, but `profile_edge.py` and `diagnostics.py` do not have a measured Pi 4 profile. Runtime latency, energy, thermals, and transport overhead on deployment hardware remain unmeasured. |
 | **Flower API lifecycle** | The code still uses Flower's `fl.server.start_server` and `fl.client.start_client` entry points. Migration from the deprecated server/client API remains open. |
-| **Research scope** | Two-client/few-round experiments and small seed counts do not establish broad industrial generalization or state-of-the-art performance. `FedAdam` tuning, formal privacy accounting, secure aggregation, larger federations, and labeled component-fault evaluation remain research gaps. |
+| **Scale of federation** | Physical evidence remains two Raspberry Pi 4 clients for five rounds. The in-process vehicle-swarm benchmark adds `K=10` with 50% participation and `K=20` with 30% participation, five rounds and five seeds, with whole-vehicle Non-IID clients and exact dropout-by-design sampling. It does not exercise network transport, availability failures, contention, or secure aggregation; it is not evidence of 10 or 20 physical customer sites. SCAFFOLD, clustered FL, longer-round sweeps, and personalization fairness controls remain open. |
+| **Dataset generality** | The measured results remain C-MAPSS simulations. `CmapssCombinedAdapter` supports the 709-engine combined training fleet and 707-engine official test fleet; Scania Component X and N-CMAPSS adapters plus `build_flexible_cnn` are implemented and schema-tested. The external datasets were not downloaded or benchmarked, so no real-truck or N-CMAPSS accuracy/generalization claim is supported. Cross-schema federation is not implemented. |
+| **Research scope** | Five-round experiments and five-seed aggregates do not establish broad industrial generalization or state-of-the-art performance. `FedAdam` tuning, formal privacy accounting, secure aggregation, networked larger-federation trials, longer horizons, and labeled component-attribution evaluation remain research gaps. |
 | **Documentation drift** | `docs/PILOT_RUNBOOK.md` still says TLS/mTLS and federated normalization must be added. Several manuscript paragraphs also say TLS, DP, and federated normalization are absent. The code and this spec describe current implementation; those other files need their own review/update. |
 
 ## 9. Verification record for this edit
 
-This specification was checked against the repository source snapshot named at the top. Full unittest discovery completed with **123 tests run, OK, 12 skipped** (C-MAPSS archive and Selenium/browser driver unavailable). The initial system-Python attempt could not import the repository's native dependencies because the installed pandas extension was x86_64 under arm64 Python; the suite passed with the project's existing test environment and local socket access. `python3 scripts/preflight_check.py --skip-unittest` passed: **0 symlinks**, protected artifacts match, 1,798 dashboard attribution rows sum to 100.0, 9 privacy fields are zero, diagnostics report 0 socket calls and 0 raw sensor bytes. C-MAPSS was not configured. The working diff contains only `PROJECT_SPEC.md`.
+This specification and `docs/PRESENTATION_ROADMAP.md` were checked against the repository source snapshot named at the top. Static source inventory contains **10 test files, 51 test classes, and 152 `test_*` methods**. `python3 scripts/preflight_check.py --skip-unittest` passed: **0 symlinks**, protected artifacts match their canonical SHA-256 values, 1,798 dashboard attribution rows sum to 100.0, 9 privacy fields are zero, and diagnostics report 0 socket calls and 0 raw sensor bytes sent. C-MAPSS was not configured, and unit tests were intentionally skipped by the requested preflight flag. The working diff contains only `PROJECT_SPEC.md` and `docs/PRESENTATION_ROADMAP.md`.
