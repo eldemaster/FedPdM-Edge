@@ -51,20 +51,64 @@ def transport_certificates(ap, args):
         ap.error(f"Invalid TLS credentials: {exc}")
 
 
+def flower_client_grpc_module():
+    """Resolve and validate the Flower gRPC credential module used by start_client."""
+    start_client = inspect.unwrap(fl.client.start_client)
+    if "root_certificates" not in inspect.signature(fl.client.start_client).parameters:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    caller = start_client
+    caller_mod = inspect.getmodule(caller)
+    try:
+        caller_src = inspect.getsource(caller)
+    except (OSError, TypeError) as exc:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation") from exc
+
+    for helper_name in ("start_client_internal", "_init_connection"):
+        helper = getattr(caller_mod, helper_name, None)
+        if helper is not None and f"{helper_name}(" in caller_src:
+            caller = inspect.unwrap(helper)
+            caller_mod = inspect.getmodule(caller)
+            try:
+                caller_src = inspect.getsource(caller)
+            except (OSError, TypeError) as exc:
+                raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation") from exc
+
+    grpc_connection = getattr(caller_mod, "grpc_connection", None)
+    if grpc_connection is None or "grpc_connection" not in caller_src:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+
+    grpc_connection = inspect.unwrap(grpc_connection)
+    conn_mod = inspect.getmodule(grpc_connection)
+    factory = getattr(conn_mod, "create_channel", None)
+    try:
+        conn_src = inspect.getsource(grpc_connection)
+        factory_src = inspect.getsource(inspect.unwrap(factory)) if factory is not None else ""
+    except (OSError, TypeError) as exc:
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation") from exc
+    if (factory is None
+            or "create_channel(" not in conn_src
+            or "grpc.ssl_channel_credentials(" not in factory_src):
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+
+    flower_grpc = inspect.getmodule(inspect.unwrap(factory))
+    if (flower_grpc is None or not hasattr(flower_grpc, "grpc")
+            or not hasattr(flower_grpc.grpc, "ssl_channel_credentials")):
+        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    return flower_grpc
+
+
 @contextmanager
 def flower_client_credentials(certificates):
-    """Supply client key/cert through Flower 1.22's CA-only gRPC factory.
+    """Supply client key/cert through Flower's CA-only gRPC channel factory.
 
     Keep start_client(root_certificates=..., insecure=False) and scope the
-    adapter to Flower's module reference, without changing grpc globally.
+    adapter to Flower's resolved module reference, without changing grpc globally.
+    Refuse an unknown implementation instead of silently omitting client identity.
     """
     if certificates is None or certificates[1] is None:
         yield
         return
-    import flwr.common.grpc as flower_grpc
-    if ("root_certificates" not in inspect.signature(fl.client.start_client).parameters
-            or "grpc.ssl_channel_credentials(" not in inspect.getsource(flower_grpc.create_channel)):
-        raise RuntimeError(f"Unsupported Flower {fl.__version__} TLS implementation")
+    flower_grpc = flower_client_grpc_module()
     original = flower_grpc.grpc
     ca, cert, key = certificates
 
