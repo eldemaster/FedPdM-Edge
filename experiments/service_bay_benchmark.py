@@ -90,6 +90,10 @@ def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=Fa
                 for name, parameter in model.named_parameters():
                     if parameter.grad is not None:
                         parameter.grad.add_(server_control[name].to(parameter) - client_control[name].to(parameter))
+                # Raw-RUL MSE can produce very large gradients. Sparse service
+                # visits may contain several minibatches; clip the corrected
+                # SCAFFOLD step so small smoke/test batches remain stable.
+                torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
     return _clone(model.state_dict())
 
