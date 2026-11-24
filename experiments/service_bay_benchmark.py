@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import sys
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -34,8 +35,13 @@ except ModuleNotFoundError:
 
 SEEDS = (7, 42, 100, 777, 2024)
 CONFIGS = (("FD002", 10, 0.30), ("FD004", 10, 0.30), ("FD004", 20, 0.20))
-METHODS = ("centralized_oracle", "local_only", "fedavg_intermittent", "fedavgm_staleness",
+METHODS = ("centralized_oracle", "centralized_budget_matched",
+           "centralized_personalized_budget_matched", "local_only",
+           "local_only_personalized_budget_matched",
+           "fedavg_intermittent", "fedavgm_staleness",
            "scaffold_service_bay", "fedavgm_personalized", "fedavgm_asym_personalized")
+FEDERATED_METHODS = ("fedavg_intermittent", "fedavgm_staleness", "scaffold_service_bay",
+                     "fedavgm_personalized", "fedavgm_asym_personalized")
 
 
 def _metric(y: np.ndarray, pred: np.ndarray) -> dict:
@@ -57,7 +63,7 @@ def _clone(state):
 
 
 def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=False,
-           client_control=None, server_control=None, device="cpu"):
+           client_control=None, server_control=None, device="cpu", max_examples=None):
     set_seed(seed)
     if str(device).startswith("xpu") and hasattr(torch, "xpu"):
         torch.xpu.manual_seed_all(seed)
@@ -69,6 +75,7 @@ def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=Fa
     optimizer = (torch.optim.SGD(model.parameters(), lr=lr) if client_control is not None
                  else torch.optim.Adam(model.parameters(), lr=lr))
     model.train()
+    examples_seen = 0
     for epoch in range(epochs):
         if cosine:
             for group in optimizer.param_groups:
@@ -76,14 +83,27 @@ def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=Fa
         if client_control is None:
             criterion = loss or torch.nn.MSELoss()
             for bx, by in loader:
+                if max_examples is not None:
+                    remaining = max_examples - examples_seen
+                    if remaining <= 0:
+                        break
+                    if len(bx) > remaining:
+                        bx, by = bx[:remaining], by[:remaining]
                 bx, by = bx.to(device), by.to(device)
                 optimizer.zero_grad()
                 criterion(model(bx), by).backward()
                 optimizer.step()
+                examples_seen += len(bx)
         else:
             criterion = loss or torch.nn.MSELoss()
             model.train()
             for bx, by in loader:
+                if max_examples is not None:
+                    remaining = max_examples - examples_seen
+                    if remaining <= 0:
+                        break
+                    if len(bx) > remaining:
+                        bx, by = bx[:remaining], by[:remaining]
                 bx, by = bx.to(device), by.to(device)
                 optimizer.zero_grad()
                 criterion(model(bx), by).backward()
@@ -95,6 +115,7 @@ def _train(state, x, y, *, seed, epochs, lr, loss=None, batch_size=64, cosine=Fa
                 # SCAFFOLD step so small smoke/test batches remain stable.
                 torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
                 optimizer.step()
+                examples_seen += len(bx)
     return _clone(model.state_dict())
 
 
@@ -149,6 +170,19 @@ def _visit_schedule(k, participation, seed, cycles):
             for cycle in range(1, cycles + 1)]
 
 
+def _training_window_budgets(clients, schedule, local_epochs):
+    """Match training examples processed to each vehicle's realized visits."""
+    visit_counts = {int(client["id"]): 0 for client in clients}
+    for selected in schedule:
+        for cid in selected:
+            visit_counts[int(cid)] += 1
+    per_vehicle = {
+        int(client["id"]): int(visit_counts[int(client["id"])] * local_epochs * client["n"])
+        for client in clients
+    }
+    return visit_counts, per_vehicle
+
+
 def _schedule_staleness(schedule):
     """Return the exact elapsed service-cycle count for every check-in."""
     last_seen = {}
@@ -163,7 +197,8 @@ def _schedule_staleness(schedule):
 
 
 def _run_federated(clients, test_x, test_y, *, seed, cycles, participation, method,
-                   initial, local_epochs, batch_size, personalization_epochs, device="cpu"):
+                   initial, local_epochs, batch_size, personalization_epochs, device="cpu",
+                   schedule=None):
     scaffold = method == "scaffold_service_bay"
     personalized = method in ("fedavgm_personalized", "fedavgm_asym_personalized")
     asym = method == "fedavgm_asym_personalized"
@@ -171,7 +206,7 @@ def _run_federated(clients, test_x, test_y, *, seed, cycles, participation, meth
     checkpoints = [VehicleEdgeCheckpoint(c["id"], 0, _clone(initial),
                                          {k: torch.zeros_like(v) for k, v in initial.items()})
                    for c in clients]
-    visits = _visit_schedule(len(clients), participation, seed, cycles)
+    visits = schedule or _visit_schedule(len(clients), participation, seed, cycles)
     history, visit_rows, client_personal = [], [], {}
     for cycle, selected in enumerate(visits, start=1):
         coordinator.round = cycle
@@ -257,57 +292,129 @@ def run_seed(train, test, ruls, profiles, *, dataset, k, participation, scheme, 
     scaled_train, scaled_test = _scale_frame(train, scaler), _scale_frame(test, scaler)
     clients = _partition_client_data(partitions, _unit_windows(scaled_train), seed)
     test_x, test_y = _official_test(scaled_test, ruls)
+    schedule = _visit_schedule(k, participation, seed, cycles)
+    visit_counts, per_vehicle_budget = _training_window_budgets(clients, schedule, local_epochs)
+    federated_window_budget = int(sum(per_vehicle_budget.values()))
+    _, personalized_vehicle_budget = _training_window_budgets(
+        clients, schedule, local_epochs + personalization_epochs)
+    personalized_window_budget = int(sum(personalized_vehicle_budget.values()))
     set_seed(seed)
     initial = _clone(CmapssRegressor().state_dict())
     pooled_x = np.concatenate([c["train_x"] for c in clients]); pooled_y = np.concatenate([c["train_y"] for c in clients])
     oracle = _train(initial, pooled_x, pooled_y, seed=seed, epochs=cycles * local_epochs,
                     lr=1e-3, batch_size=batch_size, cosine=True, device=device)
-    local_preds, local_customer_values = [], []
-    for c in clients:
-        local = _train(initial, c["train_x"], c["train_y"], seed=seed + c["id"],
-                       epochs=cycles * local_epochs, lr=1e-3, batch_size=batch_size, cosine=True,
-                       device=device)
-        local_preds.append(_predict(local, test_x, device))
-        local_customer_values.append(_metric(c["val_y"], _predict(local, c["val_x"], device)))
+    matched_epochs = int(math.ceil(federated_window_budget / max(1, len(pooled_y))))
+    matched_oracle = _train(initial, pooled_x, pooled_y, seed=seed, epochs=matched_epochs,
+                            lr=1e-3, batch_size=batch_size, cosine=True, device=device,
+                            max_examples=federated_window_budget)
+    matched_personalized_epochs = int(math.ceil(personalized_window_budget / max(1, len(pooled_y))))
+    matched_personalized_oracle = _train(
+        initial, pooled_x, pooled_y, seed=seed, epochs=matched_personalized_epochs,
+        lr=1e-3, batch_size=batch_size, cosine=True, device=device,
+        max_examples=personalized_window_budget)
     methods = {"centralized_oracle": {"global": _evaluate_global(oracle, test_x, test_y, clients, device),
                                       "round_history": [], "average_staleness_tau": 0.0,
-                                      "raw_sensor_rows_uploaded": 0},
-               "local_only": {"global": _metric(test_y, np.mean(local_preds, axis=0)),
-                              "round_history": [], "average_staleness_tau": 0.0,
-                              "raw_sensor_rows_uploaded": 0}}
-    for method in METHODS[2:]:
+                                      "raw_sensor_rows_uploaded": 0,
+                                      "training_windows_processed": int(cycles * local_epochs * len(pooled_y))},
+               "centralized_budget_matched": {
+                   "global": _evaluate_global(matched_oracle, test_x, test_y, clients, device),
+                   "round_history": [], "average_staleness_tau": 0.0,
+                   "raw_sensor_rows_uploaded": 0,
+                   "training_windows_processed": federated_window_budget},
+               "centralized_personalized_budget_matched": {
+                   "global": _evaluate_global(matched_personalized_oracle, test_x, test_y,
+                                               clients, device),
+                   "round_history": [], "average_staleness_tau": 0.0,
+                   "raw_sensor_rows_uploaded": 0,
+                   "training_windows_processed": personalized_window_budget}}
+    for baseline, budgets, epochs_per_visit in (
+            ("local_only", per_vehicle_budget, local_epochs),
+            ("local_only_personalized_budget_matched", personalized_vehicle_budget,
+             local_epochs + personalization_epochs)):
+        local_preds, local_customer_values = [], []
+        for c in clients:
+            cid = int(c["id"])
+            local_epochs_matched = visit_counts[cid] * epochs_per_visit
+            local = _train(initial, c["train_x"], c["train_y"], seed=seed + cid,
+                           epochs=int(local_epochs_matched), lr=1e-3,
+                           batch_size=batch_size, cosine=True, device=device,
+                           max_examples=budgets[cid])
+            local_preds.append(_predict(local, test_x, device))
+            local_customer_values.append(_metric(c["val_y"], _predict(local, c["val_x"], device)))
+        customer_validation = {"mean_rmse": float(np.mean([m["rmse"] for m in local_customer_values])),
+                               "per_customer": local_customer_values}
+        methods[baseline] = {
+            "global": _metric(test_y, np.mean(local_preds, axis=0)),
+            "round_history": [], "average_staleness_tau": 0.0,
+            "raw_sensor_rows_uploaded": 0,
+            "training_windows_processed": int(sum(budgets.values())),
+            "customer_validation": customer_validation}
+    for method in FEDERATED_METHODS:
         methods[method] = _run_federated(clients, test_x, test_y, seed=seed, cycles=cycles,
                                           participation=participation, method=method, initial=initial,
                                           local_epochs=local_epochs, batch_size=batch_size,
                                           personalization_epochs=personalization_epochs,
-                                          device=device)
+                                          device=device, schedule=schedule)
+        methods[method]["training_windows_processed"] = (
+            personalized_window_budget if method in
+            ("fedavgm_personalized", "fedavgm_asym_personalized")
+            else federated_window_budget)
     oracle_rmse = methods["centralized_oracle"]["global"]["rmse"]
-    local_rmse = methods["local_only"]["global"]["rmse"]
     oracle_customer = methods["centralized_oracle"]["global"]["customer_validation"]["mean_rmse"]
-    local_customer_rmse = float(np.mean([value["rmse"] for value in local_customer_values]))
-    methods["local_only"]["customer_validation"] = {"mean_rmse": local_customer_rmse,
-                                                        "per_customer": local_customer_values}
+    personal_budget_methods = {"centralized_personalized_budget_matched",
+                               "local_only_personalized_budget_matched",
+                               "fedavgm_personalized", "fedavgm_asym_personalized"}
     for method, record in methods.items():
+        personalized_budget = method in personal_budget_methods
+        local_reference = methods["local_only_personalized_budget_matched" if personalized_budget
+                                 else "local_only"]
+        central_reference = methods["centralized_personalized_budget_matched" if personalized_budget
+                                   else "centralized_budget_matched"]
+        local_rmse = local_reference["global"]["rmse"]
+        matched_oracle_rmse = central_reference["global"]["rmse"]
+        local_customer_rmse = local_reference["customer_validation"]["mean_rmse"]
+        matched_oracle_customer = central_reference["global"]["customer_validation"]["mean_rmse"]
         global_metric = record.get("personalized_global_test", record["global"])
         customer_rmse = record.get("personalized_customer_validation", record.get("customer_validation", {})
                                   ).get("mean_rmse", record["global"].get("customer_validation", {})
                                         .get("mean_rmse", oracle_customer))
         global_denominator = local_rmse - oracle_rmse
+        matched_global_denominator = local_rmse - matched_oracle_rmse
         customer_denominator = local_customer_rmse - oracle_customer
+        matched_customer_denominator = local_customer_rmse - matched_oracle_customer
         record["comparison"] = {
             "gap_vs_centralized_rmse": float(global_metric["rmse"] - oracle_rmse),
             "gain_over_local_only_rmse": float(local_rmse - global_metric["rmse"]),
             "gap_closed_fraction": float((local_rmse - global_metric["rmse"]) / global_denominator)
             if abs(global_denominator) > 1e-12 else 0.0,
+            "budget_matched_gap_closed_fraction": float(
+                (local_rmse - global_metric["rmse"]) / matched_global_denominator)
+            if abs(matched_global_denominator) > 1e-12 else 0.0,
             "gap_vs_centralized_customer_rmse": float(customer_rmse - oracle_customer),
             "gain_over_local_only_customer_rmse": float(local_customer_rmse - customer_rmse),
             "customer_gap_closed_fraction": float((local_customer_rmse - customer_rmse) /
                                                      customer_denominator)
             if abs(customer_denominator) > 1e-12 else 0.0,
+            "budget_matched_customer_gap_closed_fraction": float(
+                (local_customer_rmse - customer_rmse) / matched_customer_denominator)
+            if abs(matched_customer_denominator) > 1e-12 else 0.0,
         }
     return {"seed": seed, "partition": {str(cid): list(units) for cid, units in partitions.items()},
             "vehicles_disjoint": True, "normalization": {"aggregated_type": "LocalStats",
-            "raw_sensor_rows_uploaded": 0}, "methods": methods}
+            "raw_sensor_rows_uploaded": 0}, "training_budget": {
+                "schedule_visit_count_by_vehicle": {str(cid): count for cid, count in visit_counts.items()},
+                "local_training_windows_by_vehicle": {
+                    str(cid): budget for cid, budget in per_vehicle_budget.items()},
+                "personalized_training_windows_by_vehicle": {
+                    str(cid): budget for cid, budget in personalized_vehicle_budget.items()},
+                "federated_total_training_windows": federated_window_budget,
+                "personalized_federated_total_training_windows": personalized_window_budget,
+                "matched_local_only_total_training_windows": federated_window_budget,
+                "matched_personalized_local_only_total_training_windows": personalized_window_budget,
+                "matched_centralized_total_training_windows": federated_window_budget,
+                "matched_personalized_centralized_total_training_windows": personalized_window_budget,
+                "full_centralized_oracle_training_windows": int(cycles * local_epochs * len(pooled_y))
+            }, "methods": methods}
 
 
 def _summarize(values):
@@ -329,9 +436,11 @@ def _aggregate(seed_runs):
         summary["comparison"] = {key: _summarize([r["comparison"][key] for r in records])
                                  for key in ("gap_vs_centralized_rmse", "gain_over_local_only_rmse",
                                              "gap_closed_fraction",
+                                             "budget_matched_gap_closed_fraction",
                                              "gap_vs_centralized_customer_rmse",
                                              "gain_over_local_only_customer_rmse",
-                                             "customer_gap_closed_fraction")}
+                                             "customer_gap_closed_fraction",
+                                             "budget_matched_customer_gap_closed_fraction")}
         histories = [r["round_history"] for r in records if r["round_history"]]
         if histories:
             summary["round_rmse"] = [{"cycle": i + 1, **_summarize([h[i]["rmse"] for h in histories])}
@@ -370,6 +479,12 @@ def run_benchmark(*, seeds: Sequence[int] = SEEDS, cycles: int = 20, local_epoch
             "seeds": list(seeds), "methods": list(METHODS), "configurations": configurations,
             "training": {"local_epochs_per_visit": local_epochs, "full_local_history": True,
                          "max_train_windows_per_client": None, "cosine_learning_rate": True,
+                         "budget_matching": {
+                             "unit": "training windows processed",
+                             "local_only_matches_each_vehicles_realized_visit_budget": True,
+                             "centralized_budget_matched_matches_total_federated_windows": True,
+                             "personalized_baselines_include_head_finetuning_windows": True,
+                             "centralized_oracle_is_full_budget_upper_bound": True},
                          "device": str(device),
                          "momentum_beta": 0.9, "staleness_gamma": 0.5,
                          "asymmetric_loss": {"alpha_late": 2.5, "alpha_early": 0.5}},

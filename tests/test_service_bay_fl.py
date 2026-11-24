@@ -106,13 +106,19 @@ class ServiceBayScheduleTests(unittest.TestCase):
         profiles = {i: VehicleProfile(100 + i, i % 3, i % 2) for i in range(1, 31)}
         partition = partition_vehicles(list(profiles), 5, "iid_swarm", profiles=profiles, seed=9)
         assert_disjoint_partitions(partition, profiles)
-        from experiments.service_bay_benchmark import _schedule_staleness, _visit_schedule
+        from experiments.service_bay_benchmark import (_schedule_staleness,
+                                                       _training_window_budgets,
+                                                       _visit_schedule)
         schedule = _visit_schedule(10, 0.3, 7, 20)
         self.assertTrue(all(len(visit) == 3 for visit in schedule))
         self.assertTrue(all(len(visit) < 10 for visit in schedule))
         trace = _schedule_staleness(schedule)
         self.assertTrue(all(row["tau"] == row["cycle"] - row["last_synced_round"] for row in trace))
         self.assertGreater(max(row["tau"] for row in trace), 1)
+        counts, budgets = _training_window_budgets(
+            [{"id": 0, "n": 10}, {"id": 1, "n": 20}], [[0, 1], [0]], 3)
+        self.assertEqual(counts, {0: 2, 1: 1})
+        self.assertEqual(budgets, {0: 60, 1: 60})
 
     @unittest.skipUnless(os.environ.get("CMAPSS_ZIP"), "CMAPSS_ZIP is not configured")
     def test_fd002_one_seed_smoke_runner(self):
@@ -130,7 +136,17 @@ class ServiceBayScheduleTests(unittest.TestCase):
             result = json.loads(output.read_text())
             self.assertEqual(result["seeds"], [7])
             config = result["configurations"][0]
-            self.assertEqual(config["per_seed"][0]["methods"]["fedavgm_staleness"]["visits"][0]["raw_sensor_rows_uploaded"], 0)
+            run = config["per_seed"][0]
+            self.assertEqual(run["methods"]["fedavgm_staleness"]["visits"][0]["raw_sensor_rows_uploaded"], 0)
+            budget = run["training_budget"]
+            self.assertEqual(budget["federated_total_training_windows"],
+                             budget["matched_local_only_total_training_windows"])
+            self.assertEqual(budget["federated_total_training_windows"],
+                             budget["matched_centralized_total_training_windows"])
+            self.assertEqual(run["methods"]["fedavg_intermittent"]["training_windows_processed"],
+                             budget["federated_total_training_windows"])
+            self.assertEqual(run["methods"]["fedavgm_personalized"]["training_windows_processed"],
+                             budget["personalized_federated_total_training_windows"])
 
 
 if __name__ == "__main__":
